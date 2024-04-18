@@ -82,7 +82,17 @@ class ItirToTasklet(eve.NodeVisitor):
     TODO: Use `TemplatedGenerator` to implement this functionality, see `EmbeddedDSL` implementation.
     """
 
+    # I would implement the generic whatever handler, i.e. the default.
+    #  There I would raise an error, then you became aware that something is not well.
+
     def _visit_deref(self, node: itir.FunCall) -> str:
+        # If you still plan to turn a `dref` into a Memlet then 
+        #  I think that this function should return a name that will then be an input connector name.
+        #  You should store it somewhere (ctx?), if we further assume that there are no weird 
+        #  shifting inside the stencil, then you can simply use the map iteration indexes.
+        #  However you would then need to handle it somewhere else.
+        #  I would guess that `node.args[0]` should refer to an array in the SDFG array.
+        #  So you should return/store (node.args[0].id, self.sdfg.array[...]) and then create memlets based on this in `_make_field_ops`
         if not isinstance(node.args[0], itir.SymRef):
             raise NotImplementedError(
                 f"Unexpected 'deref' argument with type '{type(node.args[0])}'."
@@ -99,13 +109,18 @@ class ItirToTasklet(eve.NodeVisitor):
         params = [str(p.id) for p in node.params]
         tlet_code = "_out = " + self.visit(node.expr)
 
+        # I think that in DaCe they universally use two leading underscore.
+        #  It is a bit weird to see it with just one.
         return tlet_code, params, ["_out"]
 
     def visit_FunCall(self, node: itir.FunCall) -> str:
         if isinstance(node.fun, itir.SymRef) and node.fun.id == "deref":
             return self._visit_deref(node)
-        if isinstance(node.fun, itir.SymRef):
+        if isinstance(node.fun, itir.SymRef): # Consider using `elif` indication that it is a switch statement.
             builtin_name = str(node.fun.id)
+            # Just aesthetic, but conside putting this check into the _visit_num_bltin()
+            #  since it will reduce the numbers of levels.
+            #  or add it to the above check.
             if builtin_name in _MATH_BUILTINS_MAPPING:
                 return self._visit_numeric_builtin(node)
             else:
@@ -113,4 +128,7 @@ class ItirToTasklet(eve.NodeVisitor):
         raise NotImplementedError(f"Unexpected 'FunCall' with type '{type(node.fun)}'.")
 
     def visit_SymRef(self, node: itir.SymRef) -> str:
+        # I am not that well versed in ITIR, but what case is this.
+        #  I can not think of a case where it is used?
+        #  Could it me a constant such as `e`.
         return str(node.id)

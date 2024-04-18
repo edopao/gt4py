@@ -45,6 +45,7 @@ class ItirToSDFG(eve.NodeVisitor):
     (e.g. a join state for an if/else branch execution) on the exit state of the program SDFG.
     """
 
+    # I am not sure if you need a deque, list should be enough; but minor detail.
     _ctx_stack: deque[TaskgenContext]
     _param_types: list[ts.TypeSpec]
 
@@ -63,6 +64,7 @@ class ItirToSDFG(eve.NodeVisitor):
         return
 
     def _add_storage_for_temporary(self, temp_decl: itir.Temporary) -> Dict[str, str]:
+        # What does this function return what encodes the symbols?
         raise NotImplementedError()
         return {}
 
@@ -131,6 +133,7 @@ class ItirToSDFG(eve.NodeVisitor):
         ctx = self._ctx_stack[-1]
 
         # the statement expression will result in a tasklet writing to one or more local data nodes
+        #  I do not understand how information is passed on? through the node mapping?
         self.visit(stmt.expr)
 
         # sanity check on stack status
@@ -152,6 +155,8 @@ class ItirToSDFG(eve.NodeVisitor):
 
             # TODO: visit statement domain to define the memlet subset
             ctx.state.add_nedge(
+                # A taslet is not an AccessNode
+                #  If you want to connect it to a tasklet you need a connector there.
                 ctx.node_mapping[tasklet_sym],
                 ctx.node_mapping[target_sym],
                 dace.Memlet.from_array(target_sym, target_array),
@@ -165,6 +170,7 @@ class ItirToSDFG(eve.NodeVisitor):
         ctx = prev_ctx.clone()
         self._ctx_stack.append(ctx)
 
+        # What is the difference between `fun_args` and `fun_node.args`?
         self.visit(fun_args)
 
         # create ordered list of input nodes
@@ -217,9 +223,11 @@ class ItirToSDFG(eve.NodeVisitor):
         assert len(self._ctx_stack) > 0
         ctx = self._ctx_stack[-1]
 
+        # Doesn't the second check mean that a funcal is wrapped inside a funcall?
         if isinstance(node.fun, itir.FunCall) and isinstance(node.fun.fun, itir.SymRef):
             if node.fun.fun.id == "as_fieldop":
                 arg_nodes = self._make_fieldop(node.fun, node.args)
+                # What about multiple names?
                 ctx.symrefs.extend([dname for dname, _ in arg_nodes])
             else:
                 raise NotImplementedError(f"Unexpected 'FunCall' with function {node.fun.fun.id}.")

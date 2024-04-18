@@ -16,10 +16,12 @@
 import dace
 
 
+# What does the context represent?
 class ItirTaskgenContext:
     sdfg: dace.SDFG
     state: dace.SDFGState
     node_mapping: dict[str, dace.nodes.AccessNode]
+    # What are symrefs for what are you using them.
     symrefs: list[str]
 
     def __init__(
