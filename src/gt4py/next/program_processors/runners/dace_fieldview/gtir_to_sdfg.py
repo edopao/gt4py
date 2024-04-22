@@ -34,13 +34,17 @@ class GtirToSDFG(eve.NodeVisitor):
     This class is responsible for translation of `ir.Program`, that is the top level representation
     of a GT4Py program as a sequence of `it.Stmt` statements.
     Each statement is translated to a taskgraph inside a separate state. The parent SDFG and
-    the translation state define the translation context, implemented by `ItirTaskgenContext`.
+    the translation state define the translation context, implemented by `FieldviewRegion`.
     Statement states are chained one after the other: potential concurrency between states should be
     extracted by the DaCe SDFG transformations.
     The program translation keeps track of entry and exit states: each statement is translated as
     a new state inserted just before the exit state. Note that statements with branch execution might
     result in more than one state. However, each statement should provide a single termination state
     (e.g. a join state for an if/else branch execution) on the exit state of the program SDFG.
+
+    I would also write that they should start from a common, already existing state.
+        Thus every statement can expect that there is an empty state where it can start.
+        And if it needs more it should append them to that state.
     """
 
     _param_types: list[ts.TypeSpec]
@@ -99,8 +103,17 @@ class GtirToSDFG(eve.NodeVisitor):
 
         # visit one statement at a time and put it into separate state
         for i, stmt in enumerate(node.body):
+            # I am not sure if it is a good idea to keep the exit state fixed, i.e. adding new states just before it.
+            #  Because I have the feeling that it makes the construction of even a simple if-branch unnecessary complicated (the simplest example I could think of).
+            #  If you do not consider the exit state fixed you could just create three states (trueState, falseState, joinState)
+            #  connect the {true, false}State each to the headState and then connect both with the join state and return it.
+            #  If you have to maintain the exit state then you first have to add trueState followed by joinState to the sdfg,
+            #  for which you could _only_ use `add_state_before()`. Then you would need to manually connect 'headState -> falseState -> joinState'.
+            #  I am not sure how good the example of an if is, but what I want to say is, that adding a new state is complicated, because you have to reconnect
+            #  the connections towards the exit_state and you have to remember it everywhere essentially it is distributed over the whole place.
             head_state = sdfg.add_state_before(exit_state, f"stmt_{i}")
             self.visit(stmt, sdfg=sdfg, state=head_state)
+            assert sdfg.is_valid() # Additional security
 
         sdfg.validate()
         return sdfg
@@ -111,7 +124,6 @@ class GtirToSDFG(eve.NodeVisitor):
         Each statement expression results in some sort of taskgraph writing to local (aka transient) storage.
         The translation of `SetAt` ensures that the result is written to the external storage.
         """
-
         fieldview_builder = FieldviewBuilder(sdfg, state)
         fieldview_builder.visit(stmt.expr)
 

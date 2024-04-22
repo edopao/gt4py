@@ -21,6 +21,7 @@ import dace
 class FieldviewRegion:
     """Defines the dataflow scope of a fieldview expression.
 
+    <!-- A list would be easier to read -->
     This class defines a region of the dataflow which represents a fieldview expression.
     It usually consists of a map scope, with a set of input nodes that traverse the entry map;
     a set of transient data nodes (aka temporaries) where the output memlets traversing the
@@ -30,6 +31,7 @@ class FieldviewRegion:
     which are written to by one fieldview region will be inputs to the next region. Also,
     the set of access nodes `node_mapping` is shared among all fieldview regions within a state.
 
+    <!-- Is 'fieldview expression' a proper type from ITIR? I would make here a connection to what ITIR construct this class refers-->
     We use this class as return type when we visit a fieldview expression. It can be extended
     with all informatiion needed to construct the dataflow graph.
     """

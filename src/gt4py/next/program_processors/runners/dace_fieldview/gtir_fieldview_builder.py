@@ -44,13 +44,12 @@ class GtirFieldviewBuilder(eve.NodeVisitor):
             new_ctx = prev_ctx.clone()
             self._ctx = new_ctx
 
-            child_ctx = func(self, *args, **kwargs)
-
-            assert self._ctx == new_ctx
-            self._ctx = prev_ctx
-
-            return child_ctx
-
+            try:
+                child_ctx = func(self, *args, **kwargs)
+                return child_ctx
+            finally:
+                assert self._ctx == new_ctx
+                self._ctx = prev_ctx
         return newf
 
     def visit_FunCall(self, node: itir.FunCall) -> None:
@@ -65,12 +64,16 @@ class GtirFieldviewBuilder(eve.NodeVisitor):
             raise NotImplementedError(f"Unexpected 'FunCall' with type {type(node.fun)}.")
 
     def visit_Lambda(self, node: itir.Lambda) -> None:
+        # If I see this correctly this function does mimic `add_mapped_tasklet()` correctly?
+        #  If so, is there a reason why you do not use it.
         params = [str(p.id) for p in node.params]
         results = []
 
         tlet_code_lines = []
         expr_list = TaskletCodegen.apply(node.expr)
 
+        # Just for my understanding, you assume here that every expression in a lambda
+        #  is independend from the other and you can have multiples of them.
         for i, expr in enumerate(expr_list):
             outvar = f"__out_{i}"
             tlet_code_lines.append(outvar + " = " + expr)
@@ -78,6 +81,8 @@ class GtirFieldviewBuilder(eve.NodeVisitor):
         tlet_code = "\n".join(tlet_code_lines)
 
         tlet_node: dace.tasklet = self._ctx.state.add_tasklet(
+                # especially for the middle two I would use named parameter arguments, because
+                #  the arguments does not have a very descriptive name.
             f"{self._ctx.state.label}_lambda", set(params), set(results), tlet_code
         )
 
@@ -92,11 +97,20 @@ class GtirFieldviewBuilder(eve.NodeVisitor):
         self._ctx.add_input_node(dname)
 
     def write_to(self, node: itir.Expr) -> None:
+
+        # If I understand the code correctly, this function is to write `lhs := rhs` the value that is
+        #  computed in `rhs` into its proper destination, i.e. `lhs`.
+        #  So before this function runs, `rhs` was evaluated and this result is currently stored
+        #  inside `self._ctx`, since you have not called `cloned()` and called `visit()` again.
+        #  What I do not understand is why you assign the _input_ of the data flow context to `result_nodes`.
+        #  I would think that you should use `result_nodes = self._ctx.output_nodes.copy()` 
         result_nodes = self._ctx.input_nodes.copy()
+        # Is there no need to restore the old context later?
         self._ctx = self._ctx.clone()
         self.visit(node)
         # the target expression should only produce a set of access nodes (no tasklets, no output nodes)
         assert len(self._ctx.output_nodes) == 0
+        # After some thinking I get why `output := input`, but a comment would be good, especially for posterity.
         output_nodes = self._ctx.input_nodes
 
         assert len(result_nodes) == len(output_nodes)
@@ -106,13 +120,18 @@ class GtirFieldviewBuilder(eve.NodeVisitor):
 
             # TODO: visit statement domain to define the memlet subset
             self._ctx.state.add_nedge(
-                self._ctx.node_mapping[tasklet_node],
+                # You have tasklets here, what aoubt the in and output connectors?
+                self._ctx.node_mapping[tasklet_node],   # Is this the actual Tasklet or something different?
                 self._ctx.node_mapping[target_node],
+                # Does this mean that you fill an array with a single tasklet without any map?
                 dace.Memlet.from_array(target_node, target_array),
             )
 
     @create_ctx
     def _make_fieldop(self, fun_node: itir.FunCall, fun_args: List[itir.Expr]) -> FieldviewRegion:
+
+        # I would make a note here that the visit call will populate ctx
+        #  The you 5 weeks in the future will be very thankfully for that.
         ctx = self._ctx
 
         self.visit(fun_args)
