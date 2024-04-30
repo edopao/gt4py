@@ -87,6 +87,9 @@ class GtirDataflowBuilder(eve.NodeVisitor):
         return domain
 
     def visit_expression(self, node: itir.Expr) -> list[dace.nodes.AccessNode]:
+        # The name `expression` indicates to me that it is not a GT built in like `FunCall`
+        #  However, I get the feeling that this function is quite important but I miss some
+        #  description.
         expr_builder = self.visit(node)
         assert callable(expr_builder)
         results = expr_builder()
@@ -130,6 +133,9 @@ class GtirDataflowBuilder(eve.NodeVisitor):
             fun_node = node.fun
             assert len(fun_node.args) == 3
 
+            # As suggestion
+            cond_expr, true_expr, false_expr = fun_node.args
+
             # expect condition as first argument
             cond = self.visit_symbolic(fun_node.args[0])
 
@@ -148,6 +154,11 @@ class GtirDataflowBuilder(eve.NodeVisitor):
             )
             self._sdfg.add_edge(_false_state, _join_state, dace.InterstateEdge())
 
+            # What happens if you have to fork within the branches again.
+            #  I.e. something like:
+            #   z = (x + ((a + b) if cond2 else (c + d))) if cond else (y + w)
+            #  Since you create the wiring of the States above, my guess is, that second level
+            #  branching, as opposed to first level branching, is much more delicate.
             self._head_state = _true_state
             true_br_callable = self.visit(fun_node.args[1])
 
@@ -156,6 +167,13 @@ class GtirDataflowBuilder(eve.NodeVisitor):
 
             self._head_state = _join_state
 
+            # What is also a bit strange is that you actually split the implementation of the select statement, instead of putting them at one place.
+            #  Outside, i.e. here, you do some rewiring and state creation and then do some stuff inside the `Select.__call__()` function.
+            #  However, the created `Select` object can be called anywhere.
+            #  So in my view instead of putting everything regarding to `Select` at one place you put it at three different locations:
+            #   - here
+            #   - inside `Select.__call__`
+            #   - the place where you actually call `Select.__call__`.
             return Select(
                 sdfg=self._sdfg,
                 state=self._head_state,

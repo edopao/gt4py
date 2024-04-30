@@ -26,6 +26,9 @@ from gt4py.next.type_system import type_specifications as ts
 
 
 class GtirBuiltinAsFieldOp(GtirTaskletCodegen):
+    # For what do you want to use this class for?
+    #  I also think a description of the module could help a lot.
+    #  But if I understand the code correctly you split the handling?
     _stencil: itir.Lambda
     _domain: dict[Dimension, tuple[str, str]]
     _args: Sequence[GtirTaskletCodegen]
@@ -47,7 +50,7 @@ class GtirBuiltinAsFieldOp(GtirTaskletCodegen):
         self._field_type = ts.FieldType([dim for dim, _, _ in domain], field_dtype)
 
     def _build(self) -> list[tuple[dace.nodes.Node, ts.FieldType | ts.ScalarType]]:
-        # generate the python code for this stencil
+        # Generate the SDFG structure.
         output_connector = "__out"
         tlet_code = "{var} = {code}".format(
             var=output_connector, code=self.visit(self._stencil.expr)
@@ -86,7 +89,12 @@ class GtirBuiltinAsFieldOp(GtirTaskletCodegen):
                     )
                 else:
                     memlet = dace.Memlet.from_array(arg_node.data, arg_node.desc(self._sdfg))
-                    memlet.volume = 1
+                    # I think `1` is wrong, because it means that exactly one element is consumed.
+                    #  However, I am not 1005 sure if one can know this at this point.
+                    #  Thus you should use
+                    memlet.dynamic = True
+                    memlet.volume = 0
+                    #  to indicate that the amount is unknown.
                     input_memlets[connector] = memlet
             else:
                 input_memlets[connector] = dace.Memlet(data=arg_node.data, subset="0")
