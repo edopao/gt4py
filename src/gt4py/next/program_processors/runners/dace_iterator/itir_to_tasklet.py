@@ -23,7 +23,11 @@ import numpy as np
 import gt4py.eve.codegen
 from gt4py import eve
 from gt4py.next import Dimension, type_inference as next_typing
-from gt4py.next.common import _DEFAULT_SKIP_VALUE as neighbor_skip_value, Connectivity
+from gt4py.next.common import (
+    _DEFAULT_SKIP_VALUE as neighbor_skip_value,
+    Connectivity,
+    NeighborIndexProvider,
+)
 from gt4py.next.iterator import ir as itir, type_inference as itir_typing
 from gt4py.next.iterator.ir import FunCall, Lambda
 from gt4py.next.iterator.type_inference import Val
@@ -327,7 +331,13 @@ def builtin_neighbors(
     offset_dim = offset_literal.value
     assert isinstance(offset_dim, str)
     offset_provider = transformer.offset_provider[offset_dim]
-    if not isinstance(offset_provider, Connectivity):
+    if isinstance(offset_provider, NeighborIndexProvider):
+        table_provider = transformer.offset_provider[offset_provider.offset_dim]
+        assert isinstance(table_provider, Connectivity)
+        table_name = connectivity_identifier(offset_provider.offset_dim)
+    elif isinstance(offset_provider, Connectivity):
+        table_name = connectivity_identifier(offset_dim)
+    else:
         raise NotImplementedError(
             "Neighbor reduction only implemented for connectivity based on neighbor tables."
         )
@@ -372,21 +382,30 @@ def builtin_neighbors(
         debuginfo=di,
     )
 
-    table_name = connectivity_identifier(offset_dim)
-    shift_tasklet = state.add_tasklet(
-        "shift",
-        code=f"__result = __table[__idx, {neighbor_map_index}]",
-        inputs={"__table", "__idx"},
-        outputs={"__result"},
-        debuginfo=di,
-    )
-    state.add_memlet_path(
-        state.add_access(table_name, debuginfo=di),
-        me,
-        shift_tasklet,
-        memlet=dace.Memlet.from_array(table_name, sdfg.arrays[table_name]),
-        dst_conn="__table",
-    )
+    table_desc = sdfg.arrays[table_name]
+    if isinstance(offset_provider, NeighborIndexProvider):
+        shift_tasklet = state.add_tasklet(
+            "sparse_neighbor_access",
+            code=f"__result = __idx * {table_desc.strides[0]} + {neighbor_map_index} * {table_desc.strides[1]}",
+            inputs={"__idx"},
+            outputs={"__result"},
+            debuginfo=di,
+        )
+    else:
+        shift_tasklet = state.add_tasklet(
+            "shift",
+            code=f"__result = __table[__idx, {neighbor_map_index}]",
+            inputs={"__table", "__idx"},
+            outputs={"__result"},
+            debuginfo=di,
+        )
+        state.add_memlet_path(
+            state.add_access(table_name, debuginfo=di),
+            me,
+            shift_tasklet,
+            memlet=dace.Memlet.from_array(table_name, table_desc),
+            dst_conn="__table",
+        )
     state.add_memlet_path(
         origin_index_node,
         me,

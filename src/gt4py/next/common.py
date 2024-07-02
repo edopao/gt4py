@@ -905,6 +905,17 @@ class Connectivity(Protocol):
         """Return neighbor index."""
 
 
+@dataclasses.dataclass(frozen=True)
+class NeighborIndexProvider:
+    # this offset provider is used to access neighbors on sparse fields
+    # no table is provided, it simply computes the index based on the memory layout of `offset_dim` table
+    max_neighbors: int
+    origin_axis: Dimension
+    neighbor_axis: Dimension
+    offset_dim: str
+    has_skip_values: bool = False
+
+
 @runtime_checkable
 class NeighborTable(Connectivity, Protocol):
     table: npt.NDArray
