@@ -908,11 +908,11 @@ class Connectivity(Protocol):
 @dataclasses.dataclass(frozen=True)
 class NeighborIndexProvider:
     # this offset provider is used to access neighbors on sparse fields
-    # no table is provided, it simply computes the index based on the memory layout of `offset_dim` table
+    # no table is provided, it simply computes the index based on the memory layout of `table_offset` table
     max_neighbors: int
     origin_axis: Dimension
     neighbor_axis: Dimension
-    offset_dim: str
+    table_offset: str
     has_skip_values: bool = False
 
 

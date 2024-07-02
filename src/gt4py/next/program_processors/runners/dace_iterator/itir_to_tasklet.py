@@ -332,9 +332,9 @@ def builtin_neighbors(
     assert isinstance(offset_dim, str)
     offset_provider = transformer.offset_provider[offset_dim]
     if isinstance(offset_provider, NeighborIndexProvider):
-        table_provider = transformer.offset_provider[offset_provider.offset_dim]
+        table_provider = transformer.offset_provider[offset_provider.table_offset]
         assert isinstance(table_provider, Connectivity)
-        table_name = connectivity_identifier(offset_provider.offset_dim)
+        table_name = connectivity_identifier(offset_provider.table_offset)
     elif isinstance(offset_provider, Connectivity):
         table_name = connectivity_identifier(offset_dim)
     else:
@@ -1249,6 +1249,19 @@ class PythonTaskletCodegen(gt4py.eve.codegen.TemplatedGenerator):
             ]
             internals = [f"{arg.value.data}_v" for arg in args]
             expr = f"{internals[0]}[{internals[1]}, {internals[2]}]"
+        elif isinstance(self.offset_provider[offset_dim], NeighborIndexProvider):
+            offset_provider = self.offset_provider[offset_dim]
+            table_name = connectivity_identifier(offset_provider.table_offset)
+            table_desc = self.context.body.arrays[table_name]
+
+            shifted_dim = offset_provider.origin_axis.value
+            target_dim = offset_provider.neighbor_axis.value
+            args = [
+                ValueExpr(iterator.indices[shifted_dim], offset_node.dtype),
+                offset_node,
+            ]
+            internals = [f"{arg.value.data}_v" for arg in args]
+            expr = f"{internals[0]} * {table_desc.strides[0]} + {internals[1]} * {table_desc.strides[1]}"
         else:
             assert isinstance(self.offset_provider[offset_dim], Dimension)
 
