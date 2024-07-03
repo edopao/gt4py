@@ -601,14 +601,14 @@ def builtin_if(
     # visit true and false branches (here called `tbr` and `fbr`) as separate states, following `if_statement` state
     tbr_state = sdfg.add_state("true_branch")
     sdfg.add_edge(
-        stmt_state, tbr_state, dace.InterstateEdge(condition=f"{stmt_node.value.data} == True")
+        stmt_state, tbr_state, dace.InterstateEdge(condition=f"bool({stmt_node.value.data})")
     )
     sdfg.add_edge(tbr_state, join_state, dace.InterstateEdge())
     tbr_values = flatten_list(build_if_state(node_args[1], tbr_state))
     #
     fbr_state = sdfg.add_state("false_branch")
     sdfg.add_edge(
-        stmt_state, fbr_state, dace.InterstateEdge(condition=f"{stmt_node.value.data} == False")
+        stmt_state, fbr_state, dace.InterstateEdge(condition=f"not bool({stmt_node.value.data})")
     )
     sdfg.add_edge(fbr_state, join_state, dace.InterstateEdge())
     fbr_values = flatten_list(build_if_state(node_args[2], fbr_state))
