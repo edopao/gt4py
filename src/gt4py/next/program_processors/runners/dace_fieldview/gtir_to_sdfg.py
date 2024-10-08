@@ -140,11 +140,12 @@ def _replace_unsupported_symrefs(ir: gtir.Program, sdfg: dace.SDFG) -> gtir.Prog
     if not all(dace.dtypes.validate_name(str(sym.id)) for sym in ir.params):
         raise ValueError("Unsupport symbol in program parameters.")
 
-    symrefs = {str(sym.id) for sym in eve.walk_values(ir).if_isinstance(gtir.SymRef)}
     symrefs_mapping = {
-        sym: sdfg.temp_data_name() for sym in symrefs if not dace.dtypes.validate_name(sym)
+        sym_id: sdfg.temp_data_name()
+        for sym in eve.walk_values(ir).if_isinstance(gtir.SymRef)
+        if not dace.dtypes.validate_name(sym_id := str(sym.id))
     }
-    if symrefs_mapping:
+    if len(symrefs_mapping) != 0:
         return ReplaceSymrefs().visit(ir, symtable=symrefs_mapping)
     else:
         return ir
