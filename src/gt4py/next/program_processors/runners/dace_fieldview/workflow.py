@@ -74,7 +74,7 @@ class DaCeTranslator(
 
         ir = infer_domain.infer_program(ir, offset_provider=offset_provider)
 
-        sdfg = gtir_to_sdfg.build_sdfg_from_gtir(program=ir, offset_provider=offset_provider)
+        sdfg = gtir_to_sdfg.build_sdfg_from_gtir(ir, offset_provider=offset_provider)
 
         if auto_opt:
             return gtx_transformations.gt_auto_optimize(sdfg, gpu=on_gpu)
