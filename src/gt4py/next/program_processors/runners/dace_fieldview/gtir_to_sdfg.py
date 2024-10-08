@@ -363,8 +363,6 @@ class GTIRToSDFG(eve.NodeVisitor, SDFGBuilder):
         sdfg = dace.SDFG(node.id)
         sdfg.debuginfo = dace_utils.debug_info(node, default=sdfg.debuginfo)
 
-        node = _replace_unsupported_symrefs(node, sdfg)
-
         entry_state = sdfg.add_state("program_entry", is_start_block=True)
 
         # declarations of temporaries result in transient array definitions in the SDFG
@@ -379,6 +377,10 @@ class GTIRToSDFG(eve.NodeVisitor, SDFGBuilder):
             head_state = entry_state
 
         sdfg_arg_names = self._add_sdfg_params(sdfg, node.params)
+
+        # we perform this step after having added the SDFG parameters, to ensure
+        # that there is no collision between the new symbol names and the sdfg parameters
+        node = _replace_unsupported_symrefs(node, sdfg)
 
         # visit one statement at a time and expand the SDFG from the current head state
         for i, stmt in enumerate(node.body):
