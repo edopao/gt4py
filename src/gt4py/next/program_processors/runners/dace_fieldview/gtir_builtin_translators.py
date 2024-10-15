@@ -35,8 +35,20 @@ if TYPE_CHECKING:
 
 @dataclasses.dataclass(frozen=True)
 class Field:
+    """
+    Represents a field in the SDFG.
+
+    Arguments:
+        data_node: Access node to the data storage.
+        data_type: GT4Py type definition, which includes domain information.
+        local_offset: Must be set for `FieldType` with a local dimension generated
+            from neighbors access in unstructured domain, and indicates the name
+            of the offset provider used to generate the list of neighbor values.
+    """
+
     data_node: dace.nodes.AccessNode
     data_type: ts.FieldType | ts.ScalarType
+    local_offset: Optional[str] = None
 
 
 FieldopDomain: TypeAlias = list[
@@ -123,7 +135,7 @@ def _parse_fieldop_arg(
             # dereferencing elements in `ListType`
             [gtx_common.Dimension("")] if isinstance(arg.data_type.dtype, itir_ts.ListType) else []
         )
-        return gtir_dataflow.IteratorExpr(arg.data_node, dims, indices)
+        return gtir_dataflow.IteratorExpr(arg.data_node, dims, indices, arg.local_offset)
     else:
         raise NotImplementedError(f"Node type {type(arg.data_type)} not supported.")
 
@@ -165,7 +177,7 @@ def _create_temporary_field(
     field_node = state.add_access(temp_name)
     field_type = ts.FieldType(field_dims, node_type.dtype)
 
-    return Field(field_node, field_type)
+    return Field(field_node, field_type, local_offset=dataflow_output.result.local_offset)
 
 
 def extract_domain(node: gtir.Node) -> FieldopDomain:
