@@ -1433,7 +1433,7 @@ def reduce(fun, init):
         # TODO: assert check_that_all_lists_are_compatible(*lists)
         lst = None
         for cur in lists:
-            if isinstance(cur, (_List, tuple)):
+            if isinstance(cur, _List):
                 lst = cur
                 break
         # we can check a single argument for length,
@@ -1687,12 +1687,8 @@ def _get_output_type(
 
 
 @builtins.as_fieldop.register(EMBEDDED)
-def as_fieldop(
-    fun: Callable, domain: Optional[runtime.CartesianDomain | runtime.UnstructuredDomain] = None
-):
+def as_fieldop(fun: Callable, domain: runtime.CartesianDomain | runtime.UnstructuredDomain):
     def impl(*args):
-        if domain is None:
-            return _UNDEFINED
         xp = field_utils.get_array_ns(*args)
         type_ = _get_output_type(fun, domain, [promote_scalars(arg) for arg in args])
         out = field_utils.field_from_typespec(type_, common.domain(domain), xp)
