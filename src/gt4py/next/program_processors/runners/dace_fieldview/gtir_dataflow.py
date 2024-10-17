@@ -36,10 +36,12 @@ class DataExpr:
 
     Arguments:
         node: Access node to the data storage, can be either a scalar or a local list.
-        dtype: GT4Py type definition, which includes domain information.
-        local_offset: Must be set for `ListType` data generated from neighbors
-            access in unstructured domain, in which case it indicates the name of
-            the offset provider used to generate the list of neighbor values.
+        dtype: GT4Py type definition, which includes the field domain information.
+        local_offset: Must be set for `FieldType` with a local dimension generated
+            from neighbors access in unstructured domain, and indicates the name
+            of the offset provider used to generate the list of neighbor values.
+            It is always 'None' for scalar data. `FieldType` with 'local_offset=None'
+            contain only global (horizontal or vertical) dimensions.
     """
 
     node: dace.nodes.AccessNode
@@ -53,11 +55,13 @@ class MemletExpr:
     Scalar or array data access through a memlet.
 
     Arguments:
-        node: Access node to the source storage, can be either a scalar or a local list.
+        node: Access node to the data storage, can be either a scalar or a local list.
         subset: Represents the subset to use in memlet to access the above data.
-        local_offset: Must be set for `ListType` data generated from neighbors
-            access in unstructured domain, in which case it indicates the name of
-            the offset provider used to generate the list of neighbor values.
+        local_offset: Must be set for `FieldType` with a local dimension generated
+            from neighbors access in unstructured domain, and indicates the name
+            of the offset provider used to generate the list of neighbor values.
+            It is always 'None' for scalar data. `FieldType` with 'local_offset=None'
+            contain only global (horizontal or vertical) dimensions.
     """
 
     node: dace.nodes.AccessNode
@@ -351,6 +355,32 @@ class LambdaToDataflow(eve.NodeVisitor):
             name, self.state, map_ranges, inputs, code, outputs, **kwargs
         )
 
+    def _construct_local_view(self, field: MemletExpr | DataExpr) -> DataExpr:
+        if isinstance(field, MemletExpr):
+            desc = field.node.desc(self.sdfg)
+            local_dim_indices = [i for i, size in enumerate(field.subset.size()) if size != 1]
+            if len(local_dim_indices) == 0:
+                # we are accessing a single-element array with shape (1,)
+                view_shape = (1,)
+                view_strides = (1,)
+            else:
+                view_shape = tuple(desc.shape[i] for i in local_dim_indices)
+                view_strides = tuple(desc.strides[i] for i in local_dim_indices)
+            view, _ = self.sdfg.add_view(
+                f"{field.node.data}_view",
+                view_shape,
+                desc.dtype,
+                strides=view_strides,
+                find_new_name=True,
+            )
+            local_view_node = self.state.add_access(view)
+            self._add_input_data_edge(field.node, field.subset, local_view_node)
+
+            return DataExpr(local_view_node, desc.dtype)
+
+        else:
+            return field
+
     def _construct_tasklet_result(
         self,
         dtype: dace.typeclass,
@@ -489,7 +519,6 @@ class LambdaToDataflow(eve.NodeVisitor):
         it = self.visit(node.args[1])
         assert isinstance(it, IteratorExpr)
         assert offset_provider.neighbor_axis in it.dimensions
-        neighbor_dim_index = it.dimensions.index(offset_provider.neighbor_axis)
         assert offset_provider.origin_axis in it.indices
         origin_index = it.indices[offset_provider.origin_axis]
         assert isinstance(origin_index, SymbolExpr)
@@ -511,38 +540,24 @@ class LambdaToDataflow(eve.NodeVisitor):
         # node). For the specific case of `neighbors` we need to nest the neighbors map
         # inside the field map and the memlets will traverse the external map and write
         # to the view nodes. The simplify pass will remove the redundant access nodes.
-        field_slice_view, field_slice_desc = self.sdfg.add_view(
-            f"{offset_provider.neighbor_axis.value}_view",
-            (field_desc.shape[neighbor_dim_index],),
-            field_desc.dtype,
-            strides=(field_desc.strides[neighbor_dim_index],),
-            find_new_name=True,
+        field_slice = self._construct_local_view(
+            MemletExpr(
+                it.field,
+                sbs.Range.from_string(
+                    ",".join(
+                        it.indices[dim].value  # type: ignore[union-attr]
+                        if dim != offset_provider.neighbor_axis
+                        else f"0:{size}"
+                        for dim, size in zip(it.dimensions, field_desc.shape, strict=True)
+                    )
+                ),
+            )
         )
-        field_slice_node = self.state.add_access(field_slice_view)
-        field_subset = ",".join(
-            it.indices[dim].value  # type: ignore[union-attr]
-            if dim != offset_provider.neighbor_axis
-            else f"0:{size}"
-            for dim, size in zip(it.dimensions, field_desc.shape, strict=True)
-        )
-        self._add_input_data_edge(
-            it.field,
-            sbs.Range.from_string(field_subset),
-            field_slice_node,
-        )
-
-        connectivity_slice_view, _ = self.sdfg.add_view(
-            f"{connectivity}_view",
-            (offset_provider.max_neighbors,),
-            connectivity_desc.dtype,
-            strides=(connectivity_desc.strides[1],),
-            find_new_name=True,
-        )
-        connectivity_slice_node = self.state.add_access(connectivity_slice_view)
-        self._add_input_data_edge(
-            self.state.add_access(connectivity),
-            sbs.Range.from_string(f"{origin_index.value}, 0:{offset_provider.max_neighbors}"),
-            connectivity_slice_node,
+        connectivity_slice = self._construct_local_view(
+            MemletExpr(
+                self.state.add_access(connectivity),
+                sbs.Range.from_string(f"{origin_index.value}, 0:{offset_provider.max_neighbors}"),
+            )
         )
 
         neighbors_temp, _ = self.sdfg.add_temp_transient(
@@ -554,29 +569,30 @@ class LambdaToDataflow(eve.NodeVisitor):
         neighbor_idx = dace_gtir_utils.get_map_variable(offset_dim)
 
         index_connector = "__index"
-        op_code = f"__field[{index_connector}]"
+        output_connector = "__val"
+        tasklet_expression = f"{output_connector} = __field[{index_connector}]"
         input_memlets = {
-            "__field": dace.Memlet.from_array(field_slice_view, field_slice_desc),
-            index_connector: dace.Memlet(data=connectivity_slice_view, subset=neighbor_idx),
+            "__field": self.sdfg.make_array_memlet(field_slice.node.data),
+            index_connector: dace.Memlet(data=connectivity_slice.node.data, subset=neighbor_idx),
         }
         input_nodes = {
-            field_slice_view: field_slice_node,
-            connectivity_slice_view: connectivity_slice_node,
+            field_slice.node.data: field_slice.node,
+            connectivity_slice.node.data: connectivity_slice.node,
         }
 
         if offset_provider.has_skip_values:
             assert self.reduce_identity is not None
             assert self.reduce_identity.dtype == field_desc.dtype
-            op_code += f" if {index_connector} != {gtx_common._DEFAULT_SKIP_VALUE} else {field_desc.dtype}({self.reduce_identity.value})"
+            tasklet_expression += f" if {index_connector} != {gtx_common._DEFAULT_SKIP_VALUE} else {field_desc.dtype}({self.reduce_identity.value})"
 
         self._add_mapped_tasklet(
             name=f"{offset}_neighbors",
             map_ranges={neighbor_idx: f"0:{offset_provider.max_neighbors}"},
-            code=f"__val = {op_code}",
+            code=tasklet_expression,
             inputs=input_memlets,
             input_nodes=input_nodes,
             outputs={
-                "__val": dace.Memlet(data=neighbors_temp, subset=neighbor_idx),
+                output_connector: dace.Memlet(data=neighbors_temp, subset=neighbor_idx),
             },
             output_nodes={neighbors_temp: neighbors_node},
             external_edges=True,
@@ -591,12 +607,14 @@ class LambdaToDataflow(eve.NodeVisitor):
         The map operation is applied on the local dimension of input fields.
         In the example below, the local dimension consists of a list of neighbor
         values as the first argument, and a list of constant values `1.0`:
-        `map_(plus)(neighbors(V2Eₒ, it), make_const_list(1.0))`
+        `map_(plus)(neighbors(V2E, it), make_const_list(1.0))`
 
         The `plus` operation is lowered to a tasklet inside a map that computes
-        the domain of the local dimension (in this example, the number of neighbors).
+        the domain of the local dimension (in this example, max neighbors in V2E).
 
         The result is a 1D local field, with same size as the input local dimension.
+        In above example, the result would be an array with size V2E.max_neighbors,
+        containing the V2E neighbor values incremented by 1.0.
         """
         assert isinstance(node.type, itir_ts.ListType)
         assert isinstance(node.fun, gtir.FunCall)
@@ -606,11 +624,13 @@ class LambdaToDataflow(eve.NodeVisitor):
         dtype = dace_utils.as_dace_type(node.type.element_type)
 
         input_args = [self.visit(arg) for arg in node.args]
-        connectors = [f"__arg{i}" for i in range(len(input_args))]
+        input_connectors = [f"__arg{i}" for i in range(len(input_args))]
+        output_connector = "__out"
 
         # Here we build the body of the tasklet
-        fun_node = im.call(node.fun.args[0])(*connectors)
-        op_code = gtir_python_codegen.get_source(fun_node)
+        fun_node = im.call(node.fun.args[0])(*input_connectors)
+        fun_python_code = gtir_python_codegen.get_source(fun_node)
+        tasklet_expression = f"{output_connector} = {fun_python_code}"
 
         input_local_offsets = [
             input_arg.local_offset for input_arg in input_args if input_arg.local_offset is not None
@@ -629,39 +649,13 @@ class LambdaToDataflow(eve.NodeVisitor):
         # These edges are described as set of nodes, that will have to be connected to
         # external data source nodes passing through the map entry node of the field map.
         # Similarly to `neighbors` expressions, the `map_` input edges terminate on view
-        # nodes (see the for-loop below), because it is simpler than representing
-        # map-to-map edges (which require memlets with 2 pass-nodes).
+        # nodes (see `_construct_local_view` in the for-loop below), because it is simpler
+        # than representing map-to-map edges (which require memlets with 2 pass-nodes).
         input_memlets = {}
         input_nodes = {}
         skip_value_connectivities = []
-        for conn, input_expr in zip(connectors, input_args):
-            if isinstance(input_expr, MemletExpr):
-                desc = input_expr.node.desc(self.sdfg)
-                local_dim_indices = [
-                    i for i, size in enumerate(input_expr.subset.size()) if size != 1
-                ]
-                if len(local_dim_indices) == 0:
-                    # we are accessing a single-element array with shape (1,)
-                    view_shape = (1,)
-                    view_strides = (1,)
-                else:
-                    view_shape = tuple(desc.shape[i] for i in local_dim_indices)
-                    view_strides = tuple(desc.strides[i] for i in local_dim_indices)
-                view, _ = self.sdfg.add_view(
-                    f"{input_expr.node.data}_view",
-                    view_shape,
-                    desc.dtype,
-                    strides=view_strides,
-                    find_new_name=True,
-                )
-                input_node = self.state.add_access(view)
-                self._add_input_data_edge(input_expr.node, input_expr.subset, input_node)
-
-            else:
-                # this is the case of scalar value broadcasted on a list by make_const_list
-                assert isinstance(input_expr, DataExpr)
-                input_node = input_expr.node
-
+        for conn, input_expr in zip(input_connectors, input_args):
+            input_node = self._construct_local_view(input_expr).node
             input_desc = input_node.desc(self.sdfg)
             # we assume that there is a single local dimension
             if len(input_desc.shape) != 1:
@@ -692,7 +686,7 @@ class LambdaToDataflow(eve.NodeVisitor):
 
         if len(skip_value_connectivities) != 0:
             # In case one or more of input expressions contain skip values, we use
-            # the connectivity with skip values as mask for map computation.
+            # the connectivity-based offset provider as mask for map computation.
             local_offset, offset_provider = skip_value_connectivities[0]
 
             connectivity = dace_utils.connectivity_identifier(local_offset)
@@ -701,36 +695,29 @@ class LambdaToDataflow(eve.NodeVisitor):
 
             origin_map_index = dace_gtir_utils.get_map_variable(offset_provider.origin_axis)
 
-            connectivity_slice_view, _ = self.sdfg.add_view(
-                f"{connectivity}_view",
-                (offset_provider.max_neighbors,),
-                connectivity_desc.dtype,
-                strides=(connectivity_desc.strides[1],),
-                find_new_name=True,
-            )
-            connectivity_slice_node = self.state.add_access(connectivity_slice_view)
-            self._add_input_data_edge(
-                self.state.add_access(connectivity),
-                sbs.Range.from_string(f"{origin_map_index}, 0:{offset_provider.max_neighbors}"),
-                connectivity_slice_node,
+            connectivity_slice = self._construct_local_view(
+                MemletExpr(
+                    self.state.add_access(connectivity),
+                    sbs.Range.from_string(f"{origin_map_index}, 0:{offset_provider.max_neighbors}"),
+                )
             )
 
             assert self.reduce_identity is not None
             assert self.reduce_identity.dtype == dtype
             input_memlets["__neighbor_idx"] = dace.Memlet(
-                data=connectivity_slice_view, subset=map_index
+                data=connectivity_slice.node.data, subset=map_index
             )
-            input_nodes[connectivity_slice_view] = connectivity_slice_node
-            op_code += f" if __neighbor_idx != {gtx_common._DEFAULT_SKIP_VALUE} else {dtype}({self.reduce_identity.value})"
+            input_nodes[connectivity_slice.node.data] = connectivity_slice.node
+            tasklet_expression += f" if __neighbor_idx != {gtx_common._DEFAULT_SKIP_VALUE} else {dtype}({self.reduce_identity.value})"
 
         self._add_mapped_tasklet(
             name="map",
             map_ranges={map_index: f"0:{local_size}"},
-            code=f"__out = {op_code}",
+            code=tasklet_expression,
             inputs=input_memlets,
             input_nodes=input_nodes,
             outputs={
-                "__out": dace.Memlet(data=out, subset=map_index),
+                output_connector: dace.Memlet(data=out, subset=map_index),
             },
             output_nodes={out: out_node},
             external_edges=True,

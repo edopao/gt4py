@@ -88,7 +88,7 @@ class DataflowBuilder(Protocol):
         outputs: Union[Set[str], Dict[str, dace.dtypes.typeclass]],
         **kwargs: Any,
     ) -> tuple[dace.nodes.Tasklet, dace.nodes.MapEntry, dace.nodes.MapExit]:
-        """Wrapper of `dace.SDFGState.add_tasklet` that assigns unique name."""
+        """Wrapper of `dace.SDFGState.add_mapped_tasklet` that assigns unique name."""
         unique_name = self.unique_tasklet_name(name)
         return state.add_mapped_tasklet(unique_name, map_ranges, inputs, code, outputs, **kwargs)
 
@@ -270,7 +270,9 @@ class GTIRToSDFG(eve.NodeVisitor, SDFGBuilder):
                 head_state.add_nedge(
                     field.data_node, temp_node, sdfg.make_array_memlet(field.data_node.data)
                 )
-                return gtir_builtin_translators.Field(temp_node, field.data_type)
+                return gtir_builtin_translators.Field(
+                    temp_node, field.data_type, field.local_offset
+                )
 
         temp_result = gtx_utils.tree_map(make_temps)(result)
         return list(gtx_utils.flatten_nested_tuple((temp_result,)))
@@ -622,14 +624,14 @@ class GTIRToSDFG(eve.NodeVisitor, SDFGBuilder):
                 head_state.add_edge(
                     nsdfg_node, connector, dst_node, None, sdfg.make_array_memlet(temp)
                 )
-                return gtir_builtin_translators.Field(dst_node, x.data_type)
+                return gtir_builtin_translators.Field(dst_node, x.data_type, x.local_offset)
             elif x.data_node.data in lambda_arg_nodes:
                 nstate.remove_node(x.data_node)
                 return lambda_arg_nodes[x.data_node.data]
             else:
                 nstate.remove_node(x.data_node)
                 data_node = head_state.add_access(x.data_node.data)
-                return gtir_builtin_translators.Field(data_node, x.data_type)
+                return gtir_builtin_translators.Field(data_node, x.data_type, x.local_offset)
 
         return gtx_utils.tree_map(make_temps)(lambda_result)
 
