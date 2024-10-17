@@ -43,7 +43,6 @@ from gt4py.next.iterator.type_system import inference as gtir_type_inference
 from gt4py.next.program_processors.runners.dace_common import utility as dace_utils
 from gt4py.next.program_processors.runners.dace_fieldview import (
     gtir_builtin_translators,
-    gtir_dataflow,
     utility as dace_gtir_utils,
 )
 from gt4py.next.type_system import type_specifications as ts, type_translation as tt
@@ -99,7 +98,7 @@ class DataflowBuilder(Protocol):
         outputs: Union[Set[str], Dict[str, dace.dtypes.typeclass]],
         **kwargs: Any,
     ) -> tuple[dace.nodes.Tasklet, dace.nodes.MapEntry, dace.nodes.MapExit]:
-        """Wrapper of `dace.SDFGState.add_tasklet` that assigns unique name."""
+        """Wrapper of `dace.SDFGState.add_mapped_tasklet` that assigns unique name."""
         unique_name = self.unique_tasklet_name(name)
         return state.add_mapped_tasklet(unique_name, map_ranges, inputs, code, outputs, **kwargs)
 
@@ -293,7 +292,7 @@ class GTIRToSDFG(eve.NodeVisitor, SDFGBuilder):
         in case the transient arrays containing the expression result are not guaranteed
         to have the same memory layout as the target array.
         """
-        result = self.visit(node, sdfg=sdfg, head_state=head_state, reduce_identity=None)
+        result = self.visit(node, sdfg=sdfg, head_state=head_state)
 
         # sanity check: each statement should preserve the property of single exit state (aka head state),
         # i.e. eventually only introduce internal branches, and keep the same head state
@@ -311,7 +310,9 @@ class GTIRToSDFG(eve.NodeVisitor, SDFGBuilder):
                 head_state.add_nedge(
                     field.data_node, temp_node, sdfg.make_array_memlet(field.data_node.data)
                 )
-                return gtir_builtin_translators.Field(temp_node, field.data_type)
+                return gtir_builtin_translators.Field(
+                    temp_node, field.data_type, field.local_offset
+                )
 
         temp_result = gtx_utils.tree_map(make_temps)(result)
         return list(gtx_utils.flatten_nested_tuple((temp_result,)))
@@ -469,32 +470,22 @@ class GTIRToSDFG(eve.NodeVisitor, SDFGBuilder):
         node: gtir.FunCall,
         sdfg: dace.SDFG,
         head_state: dace.SDFGState,
-        reduce_identity: Optional[gtir_dataflow.SymbolExpr],
     ) -> gtir_builtin_translators.FieldopResult:
         # use specialized dataflow builder classes for each builtin function
         if cpm.is_call_to(node, "if_"):
-            return gtir_builtin_translators.translate_if(
-                node, sdfg, head_state, self, reduce_identity
-            )
+            return gtir_builtin_translators.translate_if(node, sdfg, head_state, self)
         elif cpm.is_call_to(node, "make_tuple"):
-            return gtir_builtin_translators.translate_make_tuple(
-                node, sdfg, head_state, self, reduce_identity
-            )
+            return gtir_builtin_translators.translate_make_tuple(node, sdfg, head_state, self)
         elif cpm.is_call_to(node, "tuple_get"):
-            return gtir_builtin_translators.translate_tuple_get(
-                node, sdfg, head_state, self, reduce_identity
-            )
+            return gtir_builtin_translators.translate_tuple_get(node, sdfg, head_state, self)
         elif cpm.is_applied_as_fieldop(node):
-            return gtir_builtin_translators.translate_as_fieldop(
-                node, sdfg, head_state, self, reduce_identity
-            )
+            return gtir_builtin_translators.translate_as_fieldop(node, sdfg, head_state, self)
         elif isinstance(node.fun, gtir.Lambda):
             lambda_args = [
                 self.visit(
                     arg,
                     sdfg=sdfg,
                     head_state=head_state,
-                    reduce_identity=reduce_identity,
                 )
                 for arg in node.args
             ]
@@ -503,13 +494,10 @@ class GTIRToSDFG(eve.NodeVisitor, SDFGBuilder):
                 node.fun,
                 sdfg=sdfg,
                 head_state=head_state,
-                reduce_identity=reduce_identity,
                 args=lambda_args,
             )
         elif isinstance(node.type, ts.ScalarType):
-            return gtir_builtin_translators.translate_scalar_expr(
-                node, sdfg, head_state, self, reduce_identity
-            )
+            return gtir_builtin_translators.translate_scalar_expr(node, sdfg, head_state, self)
         else:
             raise NotImplementedError(f"Unexpected 'FunCall' expression ({node}).")
 
@@ -518,7 +506,6 @@ class GTIRToSDFG(eve.NodeVisitor, SDFGBuilder):
         node: gtir.Lambda,
         sdfg: dace.SDFG,
         head_state: dace.SDFGState,
-        reduce_identity: Optional[gtir_dataflow.SymbolExpr],
         args: list[gtir_builtin_translators.FieldopResult],
     ) -> gtir_builtin_translators.FieldopResult:
         """
@@ -559,7 +546,6 @@ class GTIRToSDFG(eve.NodeVisitor, SDFGBuilder):
             node.expr,
             sdfg=nsdfg,
             head_state=nstate,
-            reduce_identity=reduce_identity,
         )
 
         def _flatten_tuples(
@@ -668,14 +654,14 @@ class GTIRToSDFG(eve.NodeVisitor, SDFGBuilder):
                 head_state.add_edge(
                     nsdfg_node, connector, dst_node, None, sdfg.make_array_memlet(temp)
                 )
-                return gtir_builtin_translators.Field(dst_node, x.data_type)
+                return gtir_builtin_translators.Field(dst_node, x.data_type, x.local_offset)
             elif x.data_node.data in lambda_arg_nodes:
                 nstate.remove_node(x.data_node)
                 return lambda_arg_nodes[x.data_node.data]
             else:
                 nstate.remove_node(x.data_node)
                 data_node = head_state.add_access(x.data_node.data)
-                return gtir_builtin_translators.Field(data_node, x.data_type)
+                return gtir_builtin_translators.Field(data_node, x.data_type, x.local_offset)
 
         return gtx_utils.tree_map(make_temps)(lambda_result)
 
@@ -684,22 +670,16 @@ class GTIRToSDFG(eve.NodeVisitor, SDFGBuilder):
         node: gtir.Literal,
         sdfg: dace.SDFG,
         head_state: dace.SDFGState,
-        reduce_identity: Optional[gtir_dataflow.SymbolExpr],
     ) -> gtir_builtin_translators.FieldopResult:
-        return gtir_builtin_translators.translate_literal(
-            node, sdfg, head_state, self, reduce_identity=None
-        )
+        return gtir_builtin_translators.translate_literal(node, sdfg, head_state, self)
 
     def visit_SymRef(
         self,
         node: gtir.SymRef,
         sdfg: dace.SDFG,
         head_state: dace.SDFGState,
-        reduce_identity: Optional[gtir_dataflow.SymbolExpr],
     ) -> gtir_builtin_translators.FieldopResult:
-        return gtir_builtin_translators.translate_symbol_ref(
-            node, sdfg, head_state, self, reduce_identity=None
-        )
+        return gtir_builtin_translators.translate_symbol_ref(node, sdfg, head_state, self)
 
 
 def build_sdfg_from_gtir(
@@ -711,7 +691,6 @@ def build_sdfg_from_gtir(
 
     The lowering to SDFG requires that the program node is type-annotated, therefore this function
     runs type ineference as first step.
-    As a final step, it runs the `simplify` pass to ensure that the SDFG is in the DaCe canonical form.
 
     Arguments:
         ir: The GTIR program node to be lowered to SDFG
@@ -723,7 +702,6 @@ def build_sdfg_from_gtir(
 
     ir = gtir_type_inference.infer(ir, offset_provider=offset_provider)
     ir = ir_prune_casts.PruneCasts().visit(ir)
-    ir = dace_gtir_utils.patch_gtir(ir)
     sdfg_genenerator = GTIRToSDFG(offset_provider)
     sdfg = sdfg_genenerator.visit(ir)
     assert isinstance(sdfg, dace.SDFG)
