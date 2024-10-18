@@ -36,8 +36,8 @@ class DaCeTranslator(
     ],
     step_types.TranslationStep[languages.SDFG, languages.LanguageSettings],
 ):
-    device_type: core_defs.DeviceType = core_defs.DeviceType.CPU
-    auto_optimize: bool = True
+    device_type: core_defs.DeviceType
+    auto_optimize: bool
 
     def _language_settings(self) -> languages.LanguageSettings:
         return languages.LanguageSettings(
@@ -134,7 +134,7 @@ class DaCeWorkflowFactory(factory.Factory):
         cmake_build_type: config.CMakeBuildType = factory.LazyFunction(
             lambda: config.CMAKE_BUILD_TYPE
         )
-        auto_optimize: bool = True
+        auto_optimize: bool = False
 
     translation = factory.SubFactory(
         DaCeTranslationStepFactory,
