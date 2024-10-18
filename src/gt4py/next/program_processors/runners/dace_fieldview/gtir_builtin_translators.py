@@ -291,7 +291,6 @@ def translate_broadcast_scalar(
     sdfg: dace.SDFG,
     state: dace.SDFGState,
     sdfg_builder: gtir_sdfg.SDFGBuilder,
-    reduce_identity: Optional[gtir_dataflow.SymbolExpr],
 ) -> FieldopResult:
     """
     Generates the dataflow subgraph for the 'as_fieldop' builtin function for the
@@ -314,9 +313,7 @@ def translate_broadcast_scalar(
 
     assert len(node.args) == 1
     assert isinstance(node.args[0].type, ts.ScalarType)
-    scalar_expr = _parse_fieldop_arg(
-        node.args[0], sdfg, state, sdfg_builder, domain, reduce_identity=None
-    )
+    scalar_expr = _parse_fieldop_arg(node.args[0], sdfg, state, sdfg_builder, domain)
     assert isinstance(scalar_expr, gtir_dataflow.MemletExpr)
     assert scalar_expr.subset == sbs.Indices.from_string("0")
     result = gtir_dataflow.DataflowOutputEdge(
