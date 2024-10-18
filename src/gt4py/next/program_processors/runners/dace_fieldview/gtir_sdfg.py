@@ -17,7 +17,19 @@ from __future__ import annotations
 import abc
 import dataclasses
 import itertools
-from typing import Any, Dict, Iterable, List, Optional, Protocol, Sequence, Set, Tuple, Union
+from typing import (
+    Any,
+    Dict,
+    Iterable,
+    List,
+    Optional,
+    Protocol,
+    Sequence,
+    Set,
+    Tuple,
+    TypeVar,
+    Union,
+)
 
 import dace
 
@@ -103,6 +115,36 @@ class SDFGBuilder(DataflowBuilder, Protocol):
     def visit(self, node: concepts.RootNode, **kwargs: Any) -> Any:
         """Visit a node of the GT4Py IR."""
         ...
+
+
+def _replace_unsupported_symrefs(ir: gtir.Program, sdfg: dace.SDFG) -> gtir.Program:
+    """Ensure that all symbol names are valid strings (e.g. no unicode-strings)."""
+
+    class ReplaceSymrefs(eve.PreserveLocationVisitor, eve.NodeTranslator):
+        T = TypeVar("T", gtir.Sym, gtir.SymRef)
+
+        def _replace_sym(self, node: T, symtable: Dict[str, str]) -> T:
+            sym = str(node.id)
+            return type(node)(id=symtable.get(sym, sym), type=node.type)
+
+        def visit_Sym(self, node: gtir.Sym, *, symtable: Dict[str, str]) -> gtir.Sym:
+            return self._replace_sym(node, symtable)
+
+        def visit_SymRef(self, node: gtir.SymRef, *, symtable: Dict[str, str]) -> gtir.SymRef:
+            return self._replace_sym(node, symtable)
+
+    if not all(dace.dtypes.validate_name(str(sym.id)) for sym in ir.params):
+        raise ValueError("Unsupport symbol in program parameters.")
+
+    symrefs_mapping = {
+        sym_id: sdfg.temp_data_name()
+        for sym in eve.walk_values(ir).if_isinstance(gtir.SymRef)
+        if not dace.dtypes.validate_name(sym_id := str(sym.id))
+    }
+    if len(symrefs_mapping) != 0:
+        return ReplaceSymrefs().visit(ir, symtable=symrefs_mapping)
+    else:
+        return ir
 
 
 @dataclasses.dataclass(frozen=True)
@@ -318,6 +360,7 @@ class GTIRToSDFG(eve.NodeVisitor, SDFGBuilder):
 
         sdfg = dace.SDFG(node.id)
         sdfg.debuginfo = dace_utils.debug_info(node, default=sdfg.debuginfo)
+
         entry_state = sdfg.add_state("program_entry", is_start_block=True)
 
         # declarations of temporaries result in transient array definitions in the SDFG
@@ -332,6 +375,10 @@ class GTIRToSDFG(eve.NodeVisitor, SDFGBuilder):
             head_state = entry_state
 
         sdfg_arg_names = self._add_sdfg_params(sdfg, node.params)
+
+        # we perform this step after having added the SDFG parameters, to ensure
+        # that there is no collision between the new symbol names and the sdfg parameters
+        node = _replace_unsupported_symrefs(node, sdfg)
 
         # visit one statement at a time and expand the SDFG from the current head state
         for i, stmt in enumerate(node.body):
