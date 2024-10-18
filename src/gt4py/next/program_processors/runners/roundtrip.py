@@ -90,7 +90,7 @@ _FENCIL_CACHE: dict[int, Callable] = {}
 
 
 def fencil_generator(
-    ir: itir.Program,
+    ir: itir.Node,
     debug: bool,
     lift_mode: itir_transforms.LiftMode,
     use_embedded: bool,
@@ -108,13 +108,6 @@ def fencil_generator(
                       to debug.
         offset_provider: A mapping from offset names to offset providers.
     """
-    from gt4py.next.iterator.transforms import (
-        collapse_tuple,
-        infer_domain,
-        inline_fundefs,
-        inline_lambdas,
-    )
-
     # TODO(tehrengruber): just a temporary solution until we have a proper generic
     #  caching mechanism
     cache_key = hash((ir, lift_mode, debug, use_embedded, tuple(offset_provider.items())))
@@ -123,20 +116,9 @@ def fencil_generator(
             print(f"Using cached fencil for key {cache_key}")
         return typing.cast(stages.CompiledProgram, _FENCIL_CACHE[cache_key])
 
-    # TODO(tehrengruber): re-enable apply_common_transforms
-    ir = inline_fundefs.InlineFundefs().visit(ir)
-    ir = inline_fundefs.prune_unreferenced_fundefs(ir)
-    ir = inline_lambdas.InlineLambdas.apply(ir, opcount_preserving=True)
-
-    try:
-        # uses type inference and therefore should only run after domain propagation, but makes some simple cases work for now
-        node = collapse_tuple.CollapseTuple.apply(ir)
-        assert isinstance(node, itir.Program)
-        ir = node
-    except Exception:
-        ...
-
-    ir = infer_domain.infer_program(ir, offset_provider=offset_provider)
+    ir = itir_transforms.apply_common_transforms(
+        ir, lift_mode=lift_mode, offset_provider=offset_provider
+    )
 
     program = EmbeddedDSL.apply(ir)
 
@@ -212,7 +194,6 @@ class Roundtrip(workflow.Workflow[stages.CompilableProgram, stages.CompiledProgr
     def __call__(self, inp: stages.CompilableProgram) -> stages.CompiledProgram:
         debug = config.DEBUG if self.debug is None else self.debug
 
-        assert isinstance(inp.data, itir.Program)
         fencil = fencil_generator(
             inp.data,
             offset_provider=inp.args.offset_provider,
