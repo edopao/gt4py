@@ -500,7 +500,9 @@ class LambdaToDataflow(eve.NodeVisitor):
                     else:
                         assert isinstance(index_expr, SymbolExpr)
 
-                return self._construct_tasklet_result(field_desc.dtype, deref_node, "val", local_offset=arg_expr.local_offset)
+                return self._construct_tasklet_result(
+                    field_desc.dtype, deref_node, "val", local_offset=arg_expr.local_offset
+                )
 
         else:
             # dereferencing a scalar or a literal node results in the node itself
