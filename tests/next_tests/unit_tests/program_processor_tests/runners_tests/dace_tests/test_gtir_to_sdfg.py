@@ -1632,6 +1632,41 @@ def test_gtir_let_lambda():
     assert np.allclose(b, ref)
 
 
+def test_gtir_let_lambda_scalar_expression():
+    domain = im.domain(gtx_common.GridType.CARTESIAN, ranges={IDim: (0, "size")})
+    testee = gtir.Program(
+        id="let_lambda_scalar_expression",
+        function_definitions=[],
+        params=[
+            gtir.Sym(id="a", type=IFTYPE.dtype),
+            gtir.Sym(id="b", type=IFTYPE.dtype),
+            gtir.Sym(id="x", type=IFTYPE),
+            gtir.Sym(id="y", type=IFTYPE),
+            gtir.Sym(id="size", type=SIZE_TYPE),
+        ],
+        declarations=[],
+        body=[
+            gtir.SetAt(
+                expr=im.let("tmp", im.multiplies_("a", "b"))(
+                    im.op_as_fieldop("multiplies", domain)("x", im.multiplies_("tmp", "tmp"))
+                ),
+                domain=domain,
+                target=gtir.SymRef(id="y"),
+            )
+        ],
+    )
+
+    a = np.random.rand()
+    b = np.random.rand()
+    c = np.random.rand(N)
+    d = np.empty_like(c)
+
+    sdfg = dace_backend.build_sdfg_from_gtir(testee, {})
+
+    sdfg(a, b, c, d, **FSYMBOLS)
+    assert np.allclose(d, (a * a * b * b * c))
+
+
 def test_gtir_let_lambda_with_connectivity():
     C2E_neighbor_idx = 1
     C2V_neighbor_idx = 2
