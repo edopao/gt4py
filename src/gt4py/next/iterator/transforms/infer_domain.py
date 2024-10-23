@@ -133,7 +133,7 @@ def infer_as_fieldop(
     assert isinstance(applied_fieldop, itir.FunCall)
     assert cpm.is_call_to(applied_fieldop.fun, "as_fieldop")
     if target_domain is None:
-        return applied_fieldop, {}  # assume unused
+        raise ValueError("'target_domain' cannot be 'None'.")
     # FIXME[#1582](tehrengruber): Temporary solution for `tuple_get` on scan result. See `test_solve_triag`.
     if isinstance(target_domain, tuple):
         target_domain = _domain_union_with_none(*flatten_nested_tuple(target_domain))
