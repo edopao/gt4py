@@ -397,7 +397,7 @@ def test_gtir_zero_dim_fields():
 
     sdfg = dace_backend.build_sdfg_from_gtir(testee, CARTESIAN_OFFSETS)
 
-    sdfg(a, b, **FSYMBOLS)
+    sdfg(a.item(), b, **FSYMBOLS)
     assert np.allclose(a, b)
 
 
@@ -1434,6 +1434,8 @@ def test_gtir_reduce_dot_product():
         ],
         dtype=connectivity_V2E.table.dtype,
     )
+    # safety check that the connectivity table actually contains skip values
+    assert len(np.where(connectivity_V2E.table == gtx_common._DEFAULT_SKIP_VALUE)) != 0
 
     offset_provider = SIMPLE_MESH_OFFSET_PROVIDER | {
         "V2E_skip": connectivity_V2E_skip,
