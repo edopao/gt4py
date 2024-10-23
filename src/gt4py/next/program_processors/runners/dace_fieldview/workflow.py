@@ -18,7 +18,8 @@ from dace.transformation.auto import auto_optimize as dace_autoopt
 
 from gt4py._core import definitions as core_defs
 from gt4py.next import allocators as gtx_allocators, common, config
-from gt4py.next.iterator import ir as itir
+from gt4py.next.iterator import ir as itir, transforms as itir_transforms
+from gt4py.next.iterator.transforms import infer_domain
 from gt4py.next.otf import languages, recipes, stages, step_types, workflow
 from gt4py.next.otf.binding import interface
 from gt4py.next.otf.languages import LanguageSettings
@@ -52,26 +53,7 @@ class DaCeTranslator(
         auto_opt: bool,
         on_gpu: bool,
     ) -> dace.SDFG:
-        from gt4py.next.iterator.transforms import (
-            collapse_tuple,
-            infer_domain,
-            inline_fundefs,
-            inline_lambdas,
-        )
-
-        # TODO(edopao): re-enable apply_common_transforms
-        ir = inline_fundefs.InlineFundefs().visit(ir)
-        ir = inline_fundefs.prune_unreferenced_fundefs(ir)
-        ir = inline_lambdas.InlineLambdas.apply(ir, opcount_preserving=True)
-
-        try:
-            # uses type inference and therefore should only run after domain propagation, but makes some simple cases work for now
-            node = collapse_tuple.CollapseTuple.apply(ir)
-            assert isinstance(node, itir.Program)
-            ir = node
-        except Exception:
-            ...
-
+        ir = itir_transforms.apply_fieldview_transforms(ir, offset_provider=offset_provider)
         ir = infer_domain.infer_program(ir, offset_provider=offset_provider)
 
         sdfg = gtir_sdfg.build_sdfg_from_gtir(ir, offset_provider=offset_provider)

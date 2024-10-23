@@ -80,17 +80,16 @@ def past_to_itir(inp: AOT_PRG, to_gtir: bool = False) -> stages.CompilableProgra
     gt_callables = transform_utils._filter_closure_vars_by_type(
         all_closure_vars, gtcallable.GTCallable
     ).values()
-    # TODO(ricoh): The following calls to .__gt_itir__, which will use whatever
-    # backend is set for each of these field operators (GTCallables). Instead
-    # we should use the current toolchain to lower these to ITIR. This will require
-    # making this step aware of the toolchain it is called by (it can be part of multiple).
-    lowered_funcs = []
-    # TODO(tehrengruber): remove this contraption
-    from gt4py.next.ffront.decorator import FieldOperator
 
+    # FIXME[#1582](tehrengruber): remove after refactoring to GTIR
+    # TODO(ricoh): The following calls to .__gt_itir__, which will use whatever
+    #  backend is set for each of these field operators (GTCallables). Instead
+    #  we should use the current toolchain to lower these to ITIR. This will require
+    #  making this step aware of the toolchain it is called by (it can be part of multiple).
+    lowered_funcs = []
     for gt_callable in gt_callables:
-        if isinstance(gt_callable, FieldOperator):
-            lowered_funcs.append(gt_callable.__gt_itir__(to_gtir=True))
+        if to_gtir:
+            lowered_funcs.append(gt_callable.__gt_gtir__())
         else:
             lowered_funcs.append(gt_callable.__gt_itir__())
 
