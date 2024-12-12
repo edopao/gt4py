@@ -7,7 +7,7 @@
 # SPDX-License-Identifier: BSD-3-Clause
 import warnings
 from collections.abc import Mapping, Sequence
-from typing import Any, Iterable
+from typing import Any, Iterable, Optional
 
 import dace
 import numpy as np
@@ -24,33 +24,29 @@ except ImportError:
     cp = None
 
 
-def _convert_arg(arg: Any, sdfg_param: str) -> Any:
+def _convert_arg(arg: Any) -> tuple[Any, Optional[gtx_common.Domain]]:
     if not isinstance(arg, gtx_common.Field):
-        return arg
+        return arg, None
     if len(arg.domain.dims) == 0:
         # Pass zero-dimensional fields as scalars.
         return arg.as_scalar()
-    # field domain offsets are not supported
-    non_zero_offsets = [
-        (dim, dim_range)
-        for dim, dim_range in zip(arg.domain.dims, arg.domain.ranges, strict=True)
-        if dim_range.start != 0
-    ]
-    if non_zero_offsets:
-        dim, dim_range = non_zero_offsets[0]
-        raise RuntimeError(
-            f"Field '{sdfg_param}' passed as array slice with offset {dim_range.start} on dimension {dim.value}."
-        )
-    return arg.ndarray
+    return arg.ndarray, arg.domain
 
 
 def _get_args(sdfg: dace.SDFG, args: Sequence[Any]) -> dict[str, Any]:
     sdfg_params: Sequence[str] = sdfg.arg_names
     flat_args: Iterable[Any] = gtx_utils.flatten_nested_tuple(tuple(args))
-    return {
-        sdfg_param: _convert_arg(arg, sdfg_param)
-        for sdfg_param, arg in zip(sdfg_params, flat_args, strict=True)
-    }
+    sdfg_arguments = {}
+    for sdfg_param, arg in zip(sdfg_params, flat_args, strict=True):
+        sdfg_arg, domain = _convert_arg(arg)
+        sdfg_arguments[sdfg_param] = sdfg_arg
+        if domain:
+            assert gtx_common.Domain.is_finite(domain)
+            sdfg_arguments |= {
+                dace_utils.field_offset_symbol(sdfg_param, i): r.start
+                for i, r in enumerate(domain.ranges)
+            }
+    return sdfg_arguments
 
 
 def _ensure_is_on_device(

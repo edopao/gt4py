@@ -173,10 +173,8 @@ class GTIRToSDFG(eve.NodeVisitor, SDFGBuilder):
     """
 
     offset_provider_type: gtx_common.OffsetProviderType
-    global_symbols: dict[str, ts.DataType] = dataclasses.field(default_factory=lambda: {})
-    field_offsets: dict[str, Optional[list[dace.symbolic.SymExpr]]] = dataclasses.field(
-        default_factory=lambda: {}
-    )
+    global_symbols: dict[str, ts.DataType]
+    field_offsets: dict[str, Optional[list[dace.symbolic.SymExpr]]]
     map_uids: eve.utils.UIDGenerator = dataclasses.field(
         init=False, repr=False, default_factory=lambda: eve.utils.UIDGenerator(prefix="map")
     )
@@ -430,10 +428,6 @@ class GTIRToSDFG(eve.NodeVisitor, SDFGBuilder):
         """
         if node.function_definitions:
             raise NotImplementedError("Functions expected to be inlined as lambda calls.")
-
-        # Since program field arguments are passed to the SDFG as full-shape arrays,
-        # there is no offset that needs to be compensated.
-        assert len(self.field_offsets) == 0
 
         sdfg = dace.SDFG(node.id)
         sdfg.debuginfo = dace_utils.debug_info(node, default=sdfg.debuginfo)
@@ -869,7 +863,22 @@ def build_sdfg_from_gtir(
 
     ir = gtir_type_inference.infer(ir, offset_provider_type=offset_provider_type)
     ir = ir_prune_casts.PruneCasts().visit(ir)
-    sdfg_genenerator = GTIRToSDFG(offset_provider_type)
+
+    field_offsets: dict[str, Optional[list[dace.symbolic.SymExpr]]] = {
+        str(p.id): [
+            dace.symbolic.SymExpr(dace_utils.field_offset_symbol(p.id, i))
+            for i in range(len(p.type.dims))
+        ]
+        for p in ir.params
+        if isinstance(p.type, ts.FieldType)
+    }
+
+    global_symbols = {str(p.id): p.type for p in ir.params if isinstance(p.type, ts.DataType)} | {
+        offset_sym: ts.ScalarType(kind=getattr(ts.ScalarKind, gtir.INTEGER_INDEX_BUILTIN.upper()))
+        for offset_sym in field_offsets.keys()
+    }
+
+    sdfg_genenerator = GTIRToSDFG(offset_provider_type, global_symbols, field_offsets)
     sdfg = sdfg_genenerator.visit(ir)
     assert isinstance(sdfg, dace.SDFG)
 
