@@ -19,7 +19,7 @@ import dataclasses
 import functools
 import itertools
 import operator
-from typing import Any, Dict, Iterable, List, Optional, Protocol, Sequence, Set, Tuple, Union
+from typing import Any, Dict, Iterable, List, Optional, Protocol, Sequence, Set, Tuple, Union, cast
 
 import dace
 
@@ -189,7 +189,7 @@ class GTIRToSDFG(eve.NodeVisitor, SDFGBuilder):
         self, data_node: dace.nodes.AccessNode, data_type: ts.FieldType | ts.ScalarType
     ) -> gtir_builtin_translators.FieldopData:
         if isinstance(data_type, ts.FieldType):
-            domain_offset = self.field_offsets.get(data_node.data, None)
+            domain_offset = self.field_offsets[data_node.data]
         else:
             domain_offset = None
         return gtir_builtin_translators.FieldopData(data_node, data_type, domain_offset)
@@ -300,6 +300,12 @@ class GTIRToSDFG(eve.NodeVisitor, SDFGBuilder):
                     tuple_name, gt_type.dims
                 )
             sdfg.add_array(name, sym_shape, dc_dtype, strides=sym_strides, transient=transient)
+            # add symbols for field domain range in each dimension
+            for i in range(len(gt_type.dims)):
+                range_start_sym = dace_utils.range_start_symbol(name, i)
+                range_stop_sym = dace_utils.range_stop_symbol(name, i)
+                for sym in range_start_sym, range_stop_sym:
+                    sdfg.add_symbol(sym, gtir_builtin_translators.INDEX_DTYPE)
             return [(name, gt_type)]
 
         elif isinstance(gt_type, ts.ScalarType):
@@ -511,8 +517,10 @@ class GTIRToSDFG(eve.NodeVisitor, SDFGBuilder):
             assert not target_desc.transient
 
             if isinstance(target.gt_type, ts.FieldType):
+                assert target.offset is not None
                 target_subset = ",".join(
-                    f"{domain[dim][0]}:{domain[dim][1]}" for dim in target.gt_type.dims
+                    f"{domain[dim][0] - offset}:{domain[dim][1] - offset}"
+                    for dim, offset in zip(target.gt_type.dims, target.offset, strict=True)
                 )
                 source_subset = (
                     target_subset
@@ -864,14 +872,20 @@ def build_sdfg_from_gtir(
     ir = gtir_type_inference.infer(ir, offset_provider_type=offset_provider_type)
     ir = ir_prune_casts.PruneCasts().visit(ir)
 
-    field_offsets: dict[str, Optional[list[dace.symbolic.SymExpr]]] = {
-        str(p.id): [
-            dace.symbolic.SymExpr(dace_utils.field_offset_symbol(p.id, i))
-            for i in range(len(p.type.dims))
-        ]
-        for p in ir.params
-        if isinstance(p.type, ts.FieldType)
-    }
+    field_offsets: dict[str, Optional[list[dace.symbolic.SymExpr]]] = {}
+    for p in ir.params:
+        pflat = (
+            dace_gtir_utils.get_tuple_fields(p.id, p.type, flatten=True)
+            if isinstance(p.type, ts.TupleType)
+            else [(str(p.id), cast(ts.DataType, p.type))]
+        )
+        for pname, ptype in pflat:
+            if isinstance(ptype, ts.FieldType):
+                field_offset = [
+                    dace.symbolic.SymExpr(dace_utils.range_start_symbol(p.id, i))
+                    for i in range(len(ptype.dims))
+                ]
+                field_offsets[pname] = field_offset
 
     global_symbols = {str(p.id): p.type for p in ir.params if isinstance(p.type, ts.DataType)} | {
         offset_sym: ts.ScalarType(kind=getattr(ts.ScalarKind, gtir.INTEGER_INDEX_BUILTIN.upper()))

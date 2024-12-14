@@ -37,16 +37,28 @@ def _get_args(sdfg: dace.SDFG, args: Sequence[Any]) -> dict[str, Any]:
     sdfg_params: Sequence[str] = sdfg.arg_names
     flat_args: Iterable[Any] = gtx_utils.flatten_nested_tuple(tuple(args))
     sdfg_arguments = {}
+    range_symbols: dict[str, int] = {}
     for sdfg_param, arg in zip(sdfg_params, flat_args, strict=True):
         sdfg_arg, domain = _convert_arg(arg)
         sdfg_arguments[sdfg_param] = sdfg_arg
         if domain:
             assert gtx_common.Domain.is_finite(domain)
-            sdfg_arguments |= {
-                dace_utils.field_offset_symbol(sdfg_param, i): r.start
+            range_symbols |= {
+                dace_utils.range_start_symbol(sdfg_param, i): r.start
                 for i, r in enumerate(domain.ranges)
             }
-    return sdfg_arguments
+            range_symbols |= {
+                dace_utils.range_stop_symbol(sdfg_param, i): r.stop
+                for i, r in enumerate(domain.ranges)
+            }
+    # sanity check in case range symbols are passed as explicit program arguments
+    for range_symbol, value in range_symbols.items():
+        if (sdfg_arg := sdfg_arguments.get(range_symbol, None)) is not None:
+            if sdfg_arg != value:
+                raise ValueError(
+                    f"Received program argument {range_symbol} with value {sdfg_arg}, expected {value}."
+                )
+    return sdfg_arguments | range_symbols
 
 
 def _ensure_is_on_device(

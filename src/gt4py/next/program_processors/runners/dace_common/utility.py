@@ -51,8 +51,16 @@ def connectivity_identifier(name: str) -> str:
     return f"connectivity_{name}"
 
 
-def field_offset_symbol(field_name: str, axis: int) -> str:
+def is_connectivity_identifier(name: str) -> bool:
+    return name.startswith("connectivity_")
+
+
+def range_start_symbol(field_name: str, axis: int) -> str:
     return f"__{field_name}_{axis}_range_0"
+
+
+def range_stop_symbol(field_name: str, axis: int) -> str:
+    return f"__{field_name}_{axis}_range_1"
 
 
 def field_symbol_name(field_name: str, axis: int, sym: Literal["size", "stride"]) -> str:
