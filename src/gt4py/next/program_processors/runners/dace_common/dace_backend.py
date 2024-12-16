@@ -29,7 +29,7 @@ def _convert_arg(arg: Any) -> tuple[Any, Optional[gtx_common.Domain]]:
         return arg, None
     if len(arg.domain.dims) == 0:
         # Pass zero-dimensional fields as scalars.
-        return arg.as_scalar()
+        return arg.as_scalar(), None
     return arg.ndarray, arg.domain
 
 
@@ -168,15 +168,11 @@ def get_sdfg_args(
     dace_args = _get_args(sdfg, args)
     dace_field_args = {n: v for n, v in dace_args.items() if not np.isscalar(v)}
     dace_conn_args = get_sdfg_conn_args(sdfg, offset_provider, on_gpu)
-    dace_shapes = _get_shape_args(sdfg.arrays, dace_field_args)
-    dace_conn_shapes = _get_shape_args(sdfg.arrays, dace_conn_args)
     dace_strides = _get_stride_args(sdfg.arrays, dace_field_args)
     dace_conn_strides = _get_stride_args(sdfg.arrays, dace_conn_args)
     all_args = {
         **dace_args,
         **dace_conn_args,
-        **dace_shapes,
-        **dace_conn_shapes,
         **dace_strides,
         **dace_conn_strides,
     }

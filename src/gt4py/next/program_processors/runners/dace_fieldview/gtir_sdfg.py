@@ -211,7 +211,7 @@ class GTIRToSDFG(eve.NodeVisitor, SDFGBuilder):
 
     def _make_array_shape_and_strides(
         self, name: str, dims: Sequence[gtx_common.Dimension]
-    ) -> tuple[list[dace.symbol], list[dace.symbol]]:
+    ) -> tuple[list[dace.symbolic.SymExpr], list[dace.symbolic.SymExpr]]:
         """
         Parse field dimensions and allocate symbols for array shape and strides.
 
@@ -221,18 +221,19 @@ class GTIRToSDFG(eve.NodeVisitor, SDFGBuilder):
         Returns:
             Two lists of symbols, one for the shape and the other for the strides of the array.
         """
-        dc_dtype = gtir_builtin_translators.INDEX_DTYPE
         neighbor_table_types = dace_utils.filter_connectivity_types(self.offset_provider_type)
         shape = [
-            (
+            dace.symbolic.SymExpr(
                 neighbor_table_types[dim.value].max_neighbors
                 if dim.kind == gtx_common.DimensionKind.LOCAL
-                else dace.symbol(dace_utils.field_size_symbol_name(name, i), dc_dtype)
+                else "{} - {}".format(
+                    dace_utils.range_stop_symbol(name, i), dace_utils.range_start_symbol(name, i)
+                )
             )
             for i, dim in enumerate(dims)
         ]
         strides = [
-            dace.symbol(dace_utils.field_stride_symbol_name(name, i), dc_dtype)
+            dace.symbolic.SymExpr(dace_utils.field_stride_symbol_name(name, i))
             for i in range(len(dims))
         ]
         return shape, strides
@@ -300,12 +301,6 @@ class GTIRToSDFG(eve.NodeVisitor, SDFGBuilder):
                     tuple_name, gt_type.dims
                 )
             sdfg.add_array(name, sym_shape, dc_dtype, strides=sym_strides, transient=transient)
-            # add symbols for field domain range in each dimension
-            for i in range(len(gt_type.dims)):
-                range_start_sym = dace_utils.range_start_symbol(name, i)
-                range_stop_sym = dace_utils.range_stop_symbol(name, i)
-                for sym in range_start_sym, range_stop_sym:
-                    sdfg.add_symbol(sym, gtir_builtin_translators.INDEX_DTYPE)
             return [(name, gt_type)]
 
         elif isinstance(gt_type, ts.ScalarType):

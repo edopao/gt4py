@@ -9,7 +9,7 @@
 from __future__ import annotations
 
 import re
-from typing import Final, Literal, Optional
+from typing import Final, Optional
 
 import dace
 
@@ -51,10 +51,6 @@ def connectivity_identifier(name: str) -> str:
     return f"connectivity_{name}"
 
 
-def is_connectivity_identifier(name: str) -> bool:
-    return name.startswith("connectivity_")
-
-
 def range_start_symbol(field_name: str, axis: int) -> str:
     return f"__{field_name}_{axis}_range_0"
 
@@ -63,16 +59,8 @@ def range_stop_symbol(field_name: str, axis: int) -> str:
     return f"__{field_name}_{axis}_range_1"
 
 
-def field_symbol_name(field_name: str, axis: int, sym: Literal["size", "stride"]) -> str:
-    return f"__{field_name}_{sym}_{axis}"
-
-
-def field_size_symbol_name(field_name: str, axis: int) -> str:
-    return field_symbol_name(field_name, axis, "size")
-
-
 def field_stride_symbol_name(field_name: str, axis: int) -> str:
-    return field_symbol_name(field_name, axis, "stride")
+    return f"__{field_name}_stride_{axis}"
 
 
 def is_field_symbol(name: str) -> bool:
