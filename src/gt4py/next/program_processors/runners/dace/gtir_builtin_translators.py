@@ -576,6 +576,120 @@ def translate_as_fieldop(
     )
 
 
+def translate_concat_where(
+    node: gtir.Node,
+    sdfg: dace.SDFG,
+    state: dace.SDFGState,
+    sdfg_builder: gtir_sdfg.SDFGBuilder,
+) -> FieldopResult:
+    """Lowers a `concat_where` expression to a dataflow where two memlets write disjoint subsets on one data access node."""
+    assert cpm.is_call_to(node, "concat_where")
+    assert len(node.args) == 3
+
+    # First argument should be the domain expression to infer the domain of next
+    # two arguments: the range extent is used by the domain inference pass and
+    # just ignored here; we only extract the dimension along which we need to
+    # concatenate the field arguments.
+    concat_domain = extract_domain(node.args[0])
+    if len(concat_domain) != 1:
+        raise NotImplementedError("Expected `concat_where` along single axis.")
+    concat_dim, concat_lower_bound, concat_upper_bound = concat_domain[0]
+
+    # we visit the field arguments
+    f1, f2 = (sdfg_builder.visit(node.args[i], sdfg=sdfg, head_state=state) for i in [1, 2])
+
+    def concatenate_inputs(inp1: FieldopData, inp2: FieldopData) -> FieldopData:
+        assert isinstance(inp1.gt_type, ts.FieldType)
+        assert inp1.gt_type == inp2.gt_type
+        inp1_desc, inp2_desc = (inp.dc_node.desc(sdfg) for inp in [inp1, inp2])
+        assert inp1_desc.dtype == inp2_desc.dtype
+
+        concat_dim_index = inp1.gt_type.dims.index(concat_dim)
+
+        # expect unbound range in the concat domain expression on left- or right-hand side
+        if concat_lower_bound == dace.symbolic.pystr_to_symbolic("-oo"):
+            lhs, lhs_desc = inp1, inp1_desc
+            rhs, rhs_desc = inp2, inp2_desc
+            concat_cut_level = concat_upper_bound
+        else:
+            assert concat_upper_bound == dace.symbolic.pystr_to_symbolic("oo")
+            lhs, lhs_desc = inp2, inp2_desc
+            rhs, rhs_desc = inp1, inp1_desc
+            concat_cut_level = concat_lower_bound
+
+        lhs_start = lhs.origin[concat_dim_index]
+        lhs_stop = dace.symbolic.pystr_to_symbolic(
+            f"min({lhs.origin[concat_dim_index]} + {lhs_desc.shape[concat_dim_index]}, {concat_cut_level})"
+        )
+        rhs_start = dace.symbolic.pystr_to_symbolic(
+            f"max({rhs.origin[concat_dim_index]}, {concat_cut_level})"
+        )
+        rhs_stop = rhs.origin[concat_dim_index] + rhs_desc.shape[concat_dim_index]
+
+        out_shape = tuple(
+            (rhs_stop - lhs_start) if dim_index == concat_dim_index else size
+            for dim_index, size in enumerate(lhs_desc.shape)
+        )
+        output, _ = sdfg_builder.add_temp_array(sdfg, out_shape, lhs_desc.dtype)
+        output_node = state.add_access(output)
+
+        # we write the full shape of the lhs node into the output array starting from the origin
+        lhs_subset = dace_subsets.Range(
+            [
+                (0, lhs_stop - lhs_start - 1, 1)
+                if dim_index == concat_dim_index
+                else (0, size - 1, 1)
+                for dim_index, size in enumerate(lhs_desc.shape)
+            ]
+        )
+        state.add_nedge(
+            lhs.dc_node,
+            output_node,
+            dace.Memlet(
+                data=lhs.dc_node.data,
+                subset=lhs_subset,
+                other_subset=lhs_subset,
+            ),
+        )
+        rhs_subset = dace_subsets.Range(
+            [
+                (
+                    rhs_start - rhs.origin[concat_dim_index],
+                    rhs_stop - rhs.origin[concat_dim_index] - 1,
+                    1,
+                )
+                if dim_index == concat_dim_index
+                else (0, size - 1, 1)
+                for dim_index, size in enumerate(rhs_desc.shape)
+            ]
+        )
+        # the full shape of the rhs node is also written, but the start index of
+        # the destination subset is not the field origin: we write to the right-hand
+        # side of the previous subset in the concat dimension
+        rhs_other_subset = dace_subsets.Range(
+            [
+                (rhs_start, rhs_stop - 1, 1) if dim_index == concat_dim_index else (0, size - 1, 1)
+                for dim_index, size in enumerate(rhs_desc.shape)
+            ]
+        )
+        state.add_nedge(
+            rhs.dc_node,
+            output_node,
+            dace.Memlet(
+                data=rhs.dc_node.data,
+                subset=rhs_subset,
+                other_subset=rhs_other_subset,
+            ),
+        )
+        return FieldopData(output_node, inp1.gt_type, origin=lhs.origin)
+
+    return (
+        concatenate_inputs(f1, f2)
+        if isinstance(node.type, ts.FieldType)
+        else gtx_utils.tree_map(concatenate_inputs)(f1, f2)
+    )
+
+
 def translate_if(
     node: gtir.Node,
     sdfg: dace.SDFG,
@@ -943,6 +1057,7 @@ if TYPE_CHECKING:
     # Use type-checking to assert that all translator functions implement the `PrimitiveTranslator` protocol
     __primitive_translators: list[PrimitiveTranslator] = [
         translate_as_fieldop,
+        translate_concat_where,
         translate_if,
         translate_index,
         translate_literal,
