@@ -13,7 +13,7 @@ import functools
 import inspect
 
 from gt4py.eve.extended_typing import Callable, Iterable, Optional, Union
-from gt4py.next import common
+from gt4py.next import common, utils
 from gt4py.next.iterator import builtins
 from gt4py.next.iterator.type_system import type_specifications as it_ts
 from gt4py.next.type_system import type_info, type_specifications as ts
@@ -128,6 +128,7 @@ def _(lhs, rhs) -> ts.ScalarType | ts.TupleType | ts.DomainType:
 @_register_builtin_type_synthesizer(fun_names=builtins.BINARY_LOGICAL_BUILTINS)
 def _(lhs, rhs) -> ts.ScalarType | ts.TupleType | ts.DomainType:
     if isinstance(lhs, ts.DomainType) and isinstance(rhs, ts.DomainType):
+        assert lhs.dims != "unknown" and rhs.dims != "unknown"
         return ts.DomainType(dims=common.promote_dims(lhs.dims, rhs.dims))
     else:
         return synthesize_binary_math_comparison_builtins(lhs, rhs)
