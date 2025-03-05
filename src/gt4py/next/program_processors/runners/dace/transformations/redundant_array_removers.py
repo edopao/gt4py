@@ -718,10 +718,7 @@ class CopyChainRemover(dace_transformation.SingleStateTransformation):
         #  For this we have to ensure that there is no connection, beside the direct
         #  one between `a1` and `a2`.
         if gtx_transformations.utils.is_reachable(
-            start=(
-                [oedge.dst for oedge in graph.out_edges(a1) if oedge.dst is not a2]
-                + [iedge.src for iedge in graph.in_edges(a1)]
-            ),
+            start=[oedge.dst for oedge in graph.out_edges(a1) if oedge.dst is not a2],
             target=a2,
             state=graph,
         ):
@@ -900,7 +897,7 @@ class CopyChainRemover(dace_transformation.SingleStateTransformation):
         #  in both cases the offset is the same.
         if new_memlet.data == a1.data:
             new_memlet.data = a2.data
-            new_memlet.subset = current_subset.offset_new(a2_offsets, negative=True)
+            new_memlet.subset = current_subset.offset_new(a2_offsets, negative=False)
         else:
             new_memlet.other_subset = current_subset.offset_new(a2_offsets, negative=False)
 
