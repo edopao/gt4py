@@ -41,12 +41,12 @@ class InferDomainOps(PreserveLocationVisitor, NodeTranslator):
         ):  # TODO: add tests
             arg1, arg2 = node.args
             if isinstance(arg2, ir.AxisLiteral):
-                # take complementary operation if we have e.g. `IDim > 1` use `1 <= IDim`
+                # take complementary operation if we have e.g. `0 < IDim` use `IDim > 0`
                 complementary_op = {
-                    "less": "greater_equal",
-                    "less_equal": "greater",
-                    "greater": "less_equal",
-                    "greater_equal": "less",
+                    "less": "greater",
+                    "less_equal": "greater_equal",
+                    "greater": "greater_equal",
+                    "greater_equal": "less_equal",
                     "eq": "eq",
                     "not_eq": "not_eq",
                 }
@@ -99,17 +99,17 @@ class InferDomainOps(PreserveLocationVisitor, NodeTranslator):
             else:
                 raise AssertionError()
 
-        if cpm.is_call_to(node, builtins.BINARY_LOGICAL_BUILTINS) and all(
-            isinstance(arg.type, ts.DomainType) for arg in node.args
-        ):
-            if cpm.is_call_to(node, "and_"):
-                # TODO: domain promotion
-                return ConstantFolding.apply(
-                    domain_utils.domain_intersection(
-                        *[domain_utils.SymbolicDomain.from_expr(arg) for arg in node.args]
-                    ).as_expr()
-                )
-            else:
-                raise NotImplementedError()
+        # if cpm.is_call_to(node, builtins.BINARY_LOGICAL_BUILTINS) and all(
+        #     isinstance(arg.type, ts.DomainType) for arg in node.args
+        # ):
+        #     if cpm.is_call_to(node, "and_"):
+        #         # TODO: domain promotion
+        #         return ConstantFolding.apply(
+        #             domain_utils.domain_intersection(
+        #                 *[domain_utils.SymbolicDomain.from_expr(arg) for arg in node.args]
+        #             ).as_expr()
+        #         )
+        #     else:
+        #         raise NotImplementedError()
 
         return node

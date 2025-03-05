@@ -595,6 +595,11 @@ def _make_slice_concat_view_node(
     concat_dim_index: int,
     concat_dim_origin: dace.symbolic.SymbolicType,
 ) -> tuple[FieldopData, dace.data.Array]:
+    """
+    Helper function called by `translate_concat_where` to create a view over an
+    array 'f', that adds one dimension with a single level. This allows to treat
+    'f' as a slice and concatanate it to the other argument field.
+    """
     assert isinstance(f.gt_type, ts.FieldType)
     view_dims = [*f.gt_type.dims[:concat_dim_index], concat_dim, *f.gt_type.dims[concat_dim_index:]]
     view_origin = tuple(
@@ -630,6 +635,13 @@ def _make_broadcast_concat_view_node(
     fother_desc: dace.data.Array,
     concat_dim_index: int,
 ) -> tuple[FieldopData, dace.data.Array]:
+    """
+    Helper function called by `translate_concat_where` to create a view over a 1D
+    array 'f', that allows accessing one value in the concat dimension and broadcast
+    it on all other dimensions of the other argument field 'fother'.
+    The returned view uses zero stride in all dimensions that are not present in
+    the 1D field.
+    """
     assert isinstance(f.gt_type, ts.FieldType)
     assert isinstance(fother.gt_type, ts.FieldType)
     assert len(f.gt_type.dims) == 1
@@ -662,7 +674,10 @@ def translate_concat_where(
     state: dace.SDFGState,
     sdfg_builder: gtir_sdfg.SDFGBuilder,
 ) -> FieldopResult:
-    """Lowers a `concat_where` expression to a dataflow where two memlets write disjoint subsets on one data access node."""
+    """
+    Lowers a `concat_where` expression to a dataflow where two memlets write
+    disjoint subsets on one data access node.
+    """
     assert cpm.is_call_to(node, "concat_where")
     assert len(node.args) == 3
 
@@ -675,18 +690,19 @@ def translate_concat_where(
         raise NotImplementedError("Expected `concat_where` along single axis.")
     concat_dim, mask_lower_bound, mask_upper_bound = mask_domain[0]
 
-    # we also use the concat domain, stored in the annex, as the domain of output field.
-    output_domain = extract_domain(node.annex.domain)
-    output_dims, output_origin, output_shape = get_field_layout(output_domain)
-    concat_dim_index = output_dims.index(concat_dim)
-
-    # we visit the field arguments for the true and false branch
-    tb, fb = (sdfg_builder.visit(node.args[i], sdfg=sdfg, head_state=state) for i in [1, 2])
-    tb_domain, fb_domain = (extract_domain(node.args[i].annex.domain) for i in [1, 2])
-
-    def concatenate_inputs(tb_field: FieldopData, fb_field: FieldopData) -> FieldopData:
+    def concatenate_inputs(
+        node_domain: gtir.Expr,
+        tb_node_domain: gtir.Expr,
+        fb_node_domain: gtir.Expr,
+        tb_field: FieldopData,
+        fb_field: FieldopData,
+    ) -> FieldopData:
         tb_data_desc, fb_data_desc = (inp.dc_node.desc(sdfg) for inp in [tb_field, fb_field])
         assert tb_data_desc.dtype == fb_data_desc.dtype
+
+        tb_domain, fb_domain = (
+            extract_domain(domain) for domain in [tb_node_domain, fb_node_domain]
+        )
 
         # expect unbound range in the concat domain expression on lower or upper range
         if mask_lower_bound == gtir_sdfg_utils.get_symbolic(gtir.InfinityLiteral.NEGATIVE):
@@ -700,17 +716,33 @@ def translate_concat_where(
         else:
             raise ValueError(f"Unexpected concat mask {node.args[0]}.")
 
-        assert isinstance(lower.gt_type, ts.FieldType)
-        assert isinstance(upper.gt_type, ts.FieldType)
+        # we use the concat domain, stored in the annex, as the domain of output field
+        output_domain = extract_domain(node_domain)
+        output_dims, output_origin, output_shape = get_field_layout(output_domain)
+        concat_dim_index = output_dims.index(concat_dim)
 
-        is_lower_slice = False
-        is_upper_slice = False
+        # in case one of the arguments is a scalar value, we convert it to a single-element
+        # 1D field with the dimension of the concat expression
+        if isinstance(lower.gt_type, ts.ScalarType):
+            assert isinstance(upper.gt_type, ts.FieldType)
+            lower = FieldopData(
+                lower.dc_node,
+                ts.FieldType(dims=[concat_dim], dtype=lower.gt_type),
+                origin=(upper_domain[concat_dim_index][1] - 1,),
+            )
+        elif isinstance(upper.gt_type, ts.ScalarType):
+            assert isinstance(lower.gt_type, ts.FieldType)
+            upper = FieldopData(
+                upper.dc_node,
+                ts.FieldType(dims=[concat_dim], dtype=upper.gt_type),
+                origin=(lower_domain[concat_dim_index][2],),
+            )
+
         if concat_dim not in lower.gt_type.dims:
             assert lower.gt_type.dims == [
                 *upper.gt_type.dims[0:concat_dim_index],
                 *upper.gt_type.dims[concat_dim_index + 1 :],
             ]
-            is_lower_slice = True
             lower, lower_desc = _make_slice_concat_view_node(
                 sdfg, state, lower, lower_desc, concat_dim, concat_dim_index, concat_dim_bound - 1
             )
@@ -719,7 +751,6 @@ def translate_concat_where(
                 *lower.gt_type.dims[0:concat_dim_index],
                 *lower.gt_type.dims[concat_dim_index + 1 :],
             ]
-            is_upper_slice = True
             upper, upper_desc = _make_slice_concat_view_node(
                 sdfg, state, upper, upper_desc, concat_dim, concat_dim_index, concat_dim_bound
             )
@@ -748,7 +779,6 @@ def translate_concat_where(
             f"max({lower_range_0}, min({lower_domain[concat_dim_index][2]}, {output_origin[concat_dim_index] + output_shape[concat_dim_index]}))",
             simplify=True,
         )
-        lower_range_size = 1 if is_lower_slice else (lower_range_1 - lower_range_0)
 
         upper_range_0 = dace.symbolic.pystr_to_symbolic(
             f"max({upper_domain[concat_dim_index][1]}, {output_origin[concat_dim_index]})",
@@ -758,28 +788,32 @@ def translate_concat_where(
             f"max({upper_range_0}, min({upper_domain[concat_dim_index][2]}, {output_origin[concat_dim_index] + output_shape[concat_dim_index]}))",
             simplify=True,
         )
-        upper_range_size = 1 if is_upper_slice else (upper_range_1 - upper_range_0)
 
         output, output_desc = sdfg_builder.add_temp_array(sdfg, output_shape, lower_desc.dtype)
         output_node = state.add_access(output)
 
-        lower_origin = lower.origin[concat_dim_index]
         lower_subset = dace_subsets.Range(
             [
                 (
-                    lower_range_0 - lower_origin,
-                    lower_range_0 - lower_origin + lower_range_size - 1,
+                    lower_range_0 - lower.origin[dim_index],
+                    lower_range_1 - lower.origin[dim_index] - 1,
                     1,
                 )
                 if dim_index == concat_dim_index
-                else (0, size - 1, 1)
+                else (
+                    lower_domain[dim_index][1] - lower.origin[dim_index],
+                    lower_domain[dim_index][1] - lower.origin[dim_index] + size - 1,
+                    1,
+                )
                 for dim_index, size in enumerate(output_desc.shape)
             ]
         )
         # we write the data of the lower range into the output array starting from the index zero
         lower_output_subset = dace_subsets.Range(
             [
-                (0, lower_range_size - 1, 1) if dim_index == concat_dim_index else (0, size - 1, 1)
+                (0, lower_range_1 - lower_range_0 - 1, 1)
+                if dim_index == concat_dim_index
+                else (0, size - 1, 1)
                 for dim_index, size in enumerate(output_desc.shape)
             ]
         )
@@ -793,16 +827,19 @@ def translate_concat_where(
             ),
         )
 
-        upper_origin = upper.origin[concat_dim_index]
         upper_subset = dace_subsets.Range(
             [
                 (
-                    upper_range_0 - upper_origin,
-                    upper_range_0 - upper_origin + upper_range_size - 1,
+                    upper_range_0 - upper.origin[dim_index],
+                    upper_range_1 - upper.origin[dim_index] - 1,
                     1,
                 )
                 if dim_index == concat_dim_index
-                else (0, size - 1, 1)
+                else (
+                    upper_domain[dim_index][1] - upper.origin[dim_index],
+                    upper_domain[dim_index][1] - upper.origin[dim_index] + size - 1,
+                    1,
+                )
                 for dim_index, size in enumerate(output_desc.shape)
             ]
         )
@@ -811,8 +848,8 @@ def translate_concat_where(
         upper_output_subset = dace_subsets.Range(
             [
                 (
-                    upper_range_0 - output_origin[concat_dim_index],
-                    upper_range_0 - output_origin[concat_dim_index] + upper_range_size - 1,
+                    upper_range_0 - output_origin[dim_index],
+                    upper_range_1 - output_origin[dim_index] - 1,
                     1,
                 )
                 if dim_index == concat_dim_index
@@ -832,10 +869,17 @@ def translate_concat_where(
 
         return FieldopData(output_node, lower.gt_type, origin=tuple(output_origin))
 
+    # we visit the field arguments for the true and false branch
+    tb, fb = (sdfg_builder.visit(node.args[i], sdfg=sdfg, head_state=state) for i in [1, 2])
+
     return (
-        concatenate_inputs(tb, fb)
+        concatenate_inputs(
+            node.annex.domain, node.args[1].annex.domain, node.args[2].annex.domain, tb, fb
+        )
         if isinstance(node.type, ts.FieldType)
-        else gtx_utils.tree_map(concatenate_inputs)(tb, fb)
+        else gtx_utils.tree_map(concatenate_inputs)(
+            node.annex.domain, node.args[1].annex.domain, node.args[2].annex.domain, tb, fb
+        )
     )
 
 
