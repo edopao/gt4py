@@ -699,7 +699,7 @@ wheels = [
 [[package]]
 name = "dace"
 version = "1.0.0"
-source = { git = "https://github.com/spcl/dace?branch=main#5097d6f1a4b6e1dc8e06be6eb4aa585a6c6e04f3" }
+source = { git = "https://github.com/philip-paul-mueller/dace?branch=modified-gpu-launches#fbe49ed930437c7e22f74574ad44baf4d21ce190" }
 resolution-markers = [
     "python_full_version >= '3.11'",
     "python_full_version < '3.11'",
@@ -1103,7 +1103,7 @@ dace = [
     { name = "dace", version = "1.0.1", source = { registry = "https://pypi.org/simple" } },
 ]
 dace-next = [
-    { name = "dace", version = "1.0.0", source = { git = "https://github.com/spcl/dace?branch=main#5097d6f1a4b6e1dc8e06be6eb4aa585a6c6e04f3" } },
+    { name = "dace", version = "1.0.0", source = { git = "https://github.com/philip-paul-mueller/dace?branch=modified-gpu-launches#fbe49ed930437c7e22f74574ad44baf4d21ce190" } },
 ]
 formatting = [
     { name = "clang-format" },
@@ -1228,7 +1228,7 @@ requires-dist = [
     { name = "cupy-rocm-5-0", marker = "extra == 'rocm5-0'", specifier = ">=13.3.0" },
     { name = "cytoolz", specifier = ">=0.12.1" },
     { name = "dace", marker = "extra == 'dace'", specifier = ">=1.0.1,<1.1.0" },
-    { name = "dace", marker = "extra == 'dace-next'", git = "https://github.com/spcl/dace?branch=main" },
+    { name = "dace", marker = "extra == 'dace-next'", git = "https://github.com/philip-paul-mueller/dace?branch=modified-gpu-launches" },
     { name = "deepdiff", specifier = ">=5.6.0" },
     { name = "devtools", specifier = ">=0.6" },
     { name = "diskcache", specifier = ">=5.6.3" },
