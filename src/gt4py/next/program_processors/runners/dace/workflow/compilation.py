@@ -75,6 +75,10 @@ class DaCeCompiler(
 
         with dace.config.temporary_config():
             dace.config.Config.set("compiler", "build_type", value=self.cmake_build_type.value)
+
+            # TODO(edopao): this is a temporary workaround for a codegen issue with cuda streams
+            dace.config.Config.set("compiler", "cuda", "max_concurrent_streams", value=1)
+
             if self.device_type == core_defs.DeviceType.CPU:
                 compiler_args = dace.config.Config.get("compiler", "cpu", "args")
                 # disable finite-math-only in order to support isfinite/isinf/isnan builtins
