@@ -114,6 +114,20 @@ class DataflowBuilder(Protocol):
         unique_name = self.unique_tasklet_name(name)
         return state.add_mapped_tasklet(unique_name, map_ranges, inputs, code, outputs, **kwargs)
 
+    def add_nedge_full_copy(
+        self,
+        sdfg: dace.SDFG,
+        state: dace.SDFGState,
+        src: dace.nodes.AccessNode,
+        dst: dace.nodes.AccessNode,
+    ) -> dace.sdfg.graph.MultiConnectorEdge[dace.Memlet]:
+        """Wrapper of `dace.SDFGState.add_nedge` that copies the full array between two access nodes."""
+        src_desc = src.desc(sdfg)
+        array_range = dace.subsets.Range.from_array(src_desc)
+        state.add_nedge(
+            src, dst, dace.Memlet(data=src.data, subset=array_range, other_subset=array_range)
+        )
+
 
 class SDFGBuilder(DataflowBuilder, Protocol):
     """Visitor interface available to GTIR-primitive translators."""
@@ -503,11 +517,7 @@ class GTIRToSDFG(eve.NodeVisitor, SDFGBuilder):
             else:
                 temp, _ = self.add_temp_array_like(sdfg, desc)
                 temp_node = head_state.add_access(temp)
-                edge = head_state.add_nedge(
-                    field.dc_node, temp_node, sdfg.make_array_memlet(field.dc_node.data)
-                )
-                # use same source and destination array subset
-                edge.data.dst_subset = edge.data.src_subset
+                self.add_nedge_full_copy(sdfg, head_state, field.dc_node, temp_node)
                 return gtir_builtin_translators.FieldopData(temp_node, field.gt_type, field.origin)
 
         temp_result = gtx_utils.tree_map(make_temps)(result)
