@@ -112,6 +112,8 @@ class HorizontalMapFusion(dace_transformation.SingleStateTransformation):
         second_map_entry: dace_nodes.MapEntry = self.second_map_entry
         second_map_exit: dace_nodes.MapExit = graph.exit_node(second_map_entry)
 
+        # TODO(iomaganaris): Check if maps share some input/output edges.
+
         # Now find all notes that are producer or consumer of the Map, after we removed
         #  the nodes of the Maps we need to check if they have become isolated.
         for i, iedge in enumerate(graph.in_edges(first_map_entry)):
@@ -125,41 +127,6 @@ class HorizontalMapFusion(dace_transformation.SingleStateTransformation):
         first_map_exit_copy.map.label = f"{first_map_exit.label}_copy"
         first_map_entry_copy.map.range = second_map_entry.map.range
         first_map_exit_copy.map.range = second_map_exit.map.range
-
-        # for iedge in graph.in_edges(first_map_entry_copy):
-        #     graph.remove_edge_and_connectors(iedge)
-        # for oedge in graph.out_edges(first_map_entry_copy):
-        #     graph.remove_edge_and_connectors(oedge)
-        # for iedge in graph.in_edges(first_map_exit_copy):
-        #     graph.remove_edge_and_connectors(iedge)
-        # for oedge in graph.out_edges(first_map_exit_copy):
-        #     graph.remove_edge_and_connectors(oedge)
-
-        # for iconn in first_map_entry.in_connectors:
-        #     if iconn not in first_map_entry_copy.in_connectors:
-        #         first_map_entry_copy.add_in_connector(iconn)
-        # for oconn in first_map_entry.out_connectors:
-        #     if oconn not in first_map_entry_copy.out_connectors:
-        #         first_map_entry_copy.add_out_connector(oconn)
-
-        # for iconn in first_map_exit.in_connectors:
-        #     if iconn not in first_map_exit_copy.in_connectors:
-        #         first_map_exit_copy.add_in_connector(iconn)
-        # for oconn in first_map_exit.out_connectors:
-        #     if oconn not in first_map_exit_copy.out_connectors:
-        #         first_map_exit_copy.add_out_connector(oconn)
-
-        # for iedge in graph.in_edges(first_map_entry):
-        #     if isinstance(iedge.src, dace_nodes.AccessNode):
-        #         # Add the edge to the second map
-        #         iedge_copy = copy.deepcopy(iedge)
-        #         graph.add_edge(iedge_copy.src, iedge_copy.src_conn, first_map_entry_copy, iedge_copy.dst_conn, iedge_copy.data)
-
-        # for oedge in graph.out_edges(first_map_exit):
-        #     if isinstance(oedge.dst, dace_nodes.AccessNode):
-        #         # Add the edge to the first map
-        #         oedge_copy = copy.deepcopy(oedge)
-        #         graph.add_edge(first_map_exit_copy, oedge_copy.src_conn, oedge_copy.dst, oedge_copy.dst_conn, oedge_copy.data)
 
         # Add the copied map to the graph
         graph.add_node(first_map_entry_copy)
@@ -182,6 +149,7 @@ class HorizontalMapFusion(dace_transformation.SingleStateTransformation):
             print(f"[apply] copy oedge {i}: {oedge}", flush=True)
 
         for node in graph.scope_subgraph(first_map_entry, include_entry=False, include_exit=False).nodes():
+            # TODO(iomaganaris): Make sure that everything inside the map is copied
             print(f"[apply] first_map_entry node {i}: {node}", flush=True)
             if isinstance(node, dace_nodes.Tasklet):
                 new_tasklet = copy.deepcopy(node)
@@ -191,76 +159,20 @@ class HorizontalMapFusion(dace_transformation.SingleStateTransformation):
                     if iedge.src == first_map_entry:
                         print(f"[apply] node has iedge to first_map_entry: {iedge}", flush=True)
                         copy_memlet = copy.deepcopy(iedge.data)
-                        # new_tasklet.add_in_connector(iedge.src_conn)
                         graph.add_edge(first_map_entry_copy, iedge.src_conn, new_tasklet, iedge.dst_conn, copy_memlet)
                         first_map_entry_copy.add_out_connector(iedge.src_conn)
-                        # graph.remove_edge(iedge)
                 for oedge in graph.out_edges(node):
                     if oedge.dst == first_map_exit:
                         print(f"[apply] node has oedge to first_map_exit: {oedge}", flush=True)
                         copy_memlet = copy.deepcopy(oedge.data)
-                        # new_tasklet.add_out_connector(oedge.dst_conn)
                         first_map_exit_copy.add_in_connector(oedge.dst_conn)
-                        graph.add_edge(new_tasklet, oedge.src_conn, first_map_exit_copy, oedge.dst_conn, copy_memlet)
-                        # graph.remove_edge(oedge)
-                # for oedge in graph.out_edges(node):
-                #     if oedge.dst == first_map_exit:
-                #         oedge.dst = first_map_exit_copy                
-
-        # # # Add the copied map to the graph
-        # graph.add_node(first_map_entry_copy)
-        # graph.add_node(first_map_exit_copy)
-
-        # graph.add_edge(first_map_entry_copy, None, first_map_exit_copy, None, dace.memlet.Memlet())
-
-        # Add first map inputs to the second map
-        # for iedge in graph.in_edges(first_map_entry):
-        #     if isinstance(iedge.src, dace_nodes.AccessNode):
-        #         # Add the edge to the second map
-        #         graph.add_edge(iedge.src, iedge.src_conn, second_map_entry, iedge.dst_conn, iedge.data)
-        #         second_map_entry
-        # for iconnector in first_map_entry.in_connectors:
-        #     if iconnector not in second_map_entry.in_connectors:
-        #         second_map_entry.add_in_connector(iconnector)
-        # for oconnector in first_map_entry.out_connectors:
-        #     if oconnector not in second_map_entry.out_connectors:
-        #         second_map_entry.add_out_connector(oconnector)
-        # # Add the second map outputs to the first map
-        # for oedge in graph.out_edges(second_map_exit):
-        #     if isinstance(oedge.dst, dace_nodes.AccessNode):
-        #         # Add the edge to the first map
-        #         graph.add_edge(second_map_exit, oedge.src_conn, oedge.dst, oedge.dst_conn, oedge.data)
-        # for iconnector in first_map_exit.in_connectors:
-        #     if iconnector not in second_map_exit.in_connectors:
-        #         second_map_exit.add_in_connector(iconnector)
-        # for oconnector in first_map_exit.out_connectors:
-        #     if oconnector not in second_map_exit.out_connectors:
-        #         second_map_exit.add_out_connector(oconnector)
-
-        # Add a tasklet to the new map, similar to the one in first_map_entry
-        # for tasklet in graph.scope_subgraph(first_map_entry, include_entry=False, include_exit=False).nodes():
-        #     if isinstance(tasklet, dace_nodes.Tasklet):
-        #         new_tasklet = copy.deepcopy(tasklet)
-        #         new_tasklet.label = f"{tasklet.label}_copy"
-        #         for iedge in graph.in_edges(tasklet):
-        #             graph.remove_edge_and_connectors(iedge)
-        #         for oedge in graph.out_edges(tasklet):
-        #             graph.remove_edge_and_connectors(oedge)
-        #         # Add the new tasklet to the graph
-        #         graph.add_node(new_tasklet)
-        #         # Connect the new tasklet to the new map entry and exit
-        #         for iedge in graph.in_edges(tasklet):
-        #             graph.add_edge(iedge.src, iedge.src_conn, new_tasklet, iedge.dst_conn, iedge.data)
-        #         for oedge in graph.out_edges(tasklet):
-        #             graph.add_edge(new_tasklet, oedge.src_conn, second_map_exit, oedge.dst_conn, oedge.data)
+                        graph.add_edge(new_tasklet, oedge.src_conn, first_map_exit_copy, oedge.dst_conn, copy_memlet)             
 
         # Remove the edge from new_map_entry to new_map_exit_copy
         # Fixes issue with cycle
-        # edges_to_remove = graph.edges_between(
-        #     second_map_entry, second_map_exit)
-        # if edges_to_remove:
-        #     for edge in edges_to_remove:
         graph.remove_edge(edge_to_remove)
+
+        # TODO(iomaganaris): Modify the range of the original map properly
 
         # Modify the range of the original map to exclude the first_map_copy range
         for i, range in enumerate(first_map_entry.map.range):
@@ -271,4 +183,4 @@ class HorizontalMapFusion(dace_transformation.SingleStateTransformation):
                 range_list = list(range)
                 range_list[0] = first_map_entry_copy.map.range[i][1] + 1
                 first_map_entry.map.range[i] = tuple(range_list)
-            print("[apply] new range: ", range, flush=True)
+            print("[apply] new range: ", first_map_entry.map.range[i], flush=True)
