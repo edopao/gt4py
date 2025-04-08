@@ -81,7 +81,7 @@ def _make_serial_sdfg_1(
     sdfg = dace.SDFG(unique_name("serial_sdfg1"))
     state = sdfg.add_state(is_start_block=True)
 
-    for name in ["a", "b", "out1", "out2"]:
+    for name in ["a", "b", "c", "d", "out1", "out2", "out3", "out4"]:
         sdfg.add_array(
             name=name,
             shape=shape,
@@ -104,6 +104,24 @@ def _make_serial_sdfg_1(
         inputs={"__in0": dace.Memlet("b[__i0, __i1]")},
         code="__out = __in0 + 1.0",
         outputs={"__out": dace.Memlet("out2[__i0, __i1]")},
+        external_edges=True,
+    )
+
+    state.add_mapped_tasklet(
+        name="third_computation",
+        map_ranges=[("__i3", f"0:{N/2}"), ("__i4", f"0:{N}")],
+        inputs={"__in0": dace.Memlet("c[__i3, __i4]"), "__in1": dace.Memlet("a[__i3, __i4]")},
+        code="__out = __in0 + __in1 + 1.0",
+        outputs={"__out": dace.Memlet("out3[__i3, __i4]")},
+        external_edges=True,
+    )
+
+    state.add_mapped_tasklet(
+        name="fourth_computation",
+        map_ranges=[("__i3", f"{N/4}:{N}"), ("__i4", f"0:{N}")],
+        inputs={"__in0": dace.Memlet("d[__i3, __i4]"), "__in1": dace.Memlet("a[__i3, __i4]")},
+        code="__out = __in0 + __in1 + 1.0",
+        outputs={"__out": dace.Memlet("out4[__i3, __i4]")},
         external_edges=True,
     )
 
