@@ -137,13 +137,14 @@ class HorizontalMapFusion(dace_transformation.SingleStateTransformation):
                                 range2,
                             )
                             print(f"[can_be_applied] overlapping_range: {overlapping_range}", flush=True)
-                            if overlapping_range[0] == overlapping_range[1] or overlapping_range[0] > overlapping_range[1]:
+                            if int(overlapping_range[0]) == int(overlapping_range[1]) or int(overlapping_range[0]) > int(overlapping_range[1]):
                                 print(f"[can_be_applied] range1 is not smaller than range2 at index {range_index}", flush=True)
                                 return_value = False
                                 break
-                            if not (overlapping_range[0] == range1[0] and overlapping_range[1] == range1[1] and overlapping_range[0] == range2[0] and overlapping_range[1] == range2[1]):
-                                print(f"[can_be_applied] range1 is same as range2 at index {range_index}", flush=True)
+                            if not (int(overlapping_range[0]) == int(range1[0]) and int(overlapping_range[1]) == int(range1[1]) and int(overlapping_range[0]) == int(range2[0]) and int(overlapping_range[1]) == int(range2[1])):
                                 all_ranges_are_the_same = False
+                            else:
+                                print(f"[can_be_applied] range1 is same as range2 at index {range_index}", flush=True)
                             # TODO(iomaganaris): Stop when there is already another map that matches the range
                             # range1 = first_map_entry.map.range[range_index]
                             # range2 = second_map_entry.map.range[range_index]
@@ -255,6 +256,7 @@ class HorizontalMapFusion(dace_transformation.SingleStateTransformation):
         ) -> list[tuple[int, int, int]]:
             start1, end1, stride1 = range1
             start2, end2, stride2 = range2
+            assert stride1 == stride2, "Strides must be the same"
             ranges = []
             if start1 < start2:
                 ranges.append((int(start1), int(start2-1), int(stride1)))
@@ -291,6 +293,5 @@ class HorizontalMapFusion(dace_transformation.SingleStateTransformation):
             print(f"[apply] first_map_entry node: {node}", flush=True)
             graph.remove_node(node)
 
-        sdfg.view()
-        import pdb; pdb.set_trace()  # noqa: E701
-        
+        # sdfg.view()
+        # import pdb; pdb.set_trace()  # noqa: E701
