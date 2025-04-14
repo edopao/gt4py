@@ -4,6 +4,8 @@ dace = pytest.importorskip("dace")
 from dace.sdfg import nodes as dace_nodes
 from dace.transformation import dataflow as dace_dataflow
 
+import copy
+
 from gt4py.next.program_processors.runners.dace import (
     transformations as gtx_transformations,
 )
@@ -89,16 +91,16 @@ def _make_serial_sdfg_1(
             transient=False,
         )
 
-    state.add_mapped_tasklet(
+    tasklet1, map_entry1, map_exit1 = state.add_mapped_tasklet(
         name="first_computation",
         map_ranges=[("__i0", f"0:{N}"), ("__i1", f"0:{N}")],
         inputs={"__in0": dace.Memlet("a[__i0, __i1]")},
         code="__out = __in0 + 1.0",
         outputs={"__out": dace.Memlet("out1[__i0, __i1]")},
         external_edges=True,
-    )
+    )            
 
-    state.add_mapped_tasklet(
+    tasklet2, map_entry2, map_exit2 = state.add_mapped_tasklet(
         name="second_computation",
         map_ranges=[("__i0", f"0:{N/2}"), ("__i1", f"0:{N}")],
         inputs={"__in0": dace.Memlet("b[__i0, __i1]")},
@@ -107,7 +109,7 @@ def _make_serial_sdfg_1(
         external_edges=True,
     )
 
-    state.add_mapped_tasklet(
+    tasklet3, map_entry3, map_exit3 = state.add_mapped_tasklet(
         name="third_computation",
         map_ranges=[("__i3", f"0:{N/2}"), ("__i4", f"0:{N}")],
         inputs={"__in0": dace.Memlet("c[__i3, __i4]"), "__in1": dace.Memlet("a[__i3, __i4]")},
@@ -116,7 +118,7 @@ def _make_serial_sdfg_1(
         external_edges=True,
     )
 
-    state.add_mapped_tasklet(
+    tasklet4, map_entry4, map_exit4 = state.add_mapped_tasklet(
         name="fourth_computation",
         map_ranges=[("__i3", f"{N/4}:{N}"), ("__i4", f"0:{N}")],
         inputs={"__in0": dace.Memlet("d[__i3, __i4]"), "__in1": dace.Memlet("a[__i3, __i4]")},
@@ -125,10 +127,33 @@ def _make_serial_sdfg_1(
         external_edges=True,
     )
 
+    existing_access_nodes = {}
+
+    for access_node in state.nodes():
+        if isinstance(access_node, dace_nodes.AccessNode):
+            if access_node.label not in existing_access_nodes:
+                existing_access_nodes[access_node.label] = access_node
+            else:
+                print(f"Duplicate access node found: {access_node.label}")
+                edges_for_removal = []
+                for edge in state.in_edges(access_node):
+                    print(f"Removing edge {edge} from {access_node.label}")
+                    edges_for_removal.append(edge)
+                    state.add_edge(edge.src, edge.src_conn, existing_access_nodes[access_node.label], edge.dst_conn, copy.deepcopy(edge.data))
+                for edge in state.out_edges(access_node):
+                    print(f"Removing edge {edge} from {access_node.label}")
+                    edges_for_removal.append(edge)
+                    state.add_edge(existing_access_nodes[access_node.label], edge.src_conn, edge.dst, edge.dst_conn, copy.deepcopy(edge.data))
+                for edge in edges_for_removal:
+                    state.remove_edge(edge)
+                state.remove_node(access_node)
+
     return sdfg
 
 def test_vertical_map_fusion():
     sdfg = _make_serial_sdfg_1(20)
+    sdfg.view()
+    # import pdb; pdb.set_trace()
     _ = gtx_transformations.gt_horizontal_map_fusion(
         sdfg=sdfg,
         run_simplify=False,

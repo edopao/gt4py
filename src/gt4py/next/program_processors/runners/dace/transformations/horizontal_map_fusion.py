@@ -25,7 +25,7 @@ def gt_horizontal_map_fusion(
     validate_all: bool = False,
 ) -> int:
     ret = sdfg.apply_transformations_repeated(
-        [HorizontalMapFusion(), gtx_transformations.MapFusionParallel(only_if_common_ancestor=False)],
+        [HorizontalMapFusion(), gtx_transformations.MapFusionParallel(only_if_common_ancestor=True)],
         validate=validate,
         validate_all=validate_all,
     )
@@ -201,12 +201,18 @@ class HorizontalMapFusion(dace_transformation.SingleStateTransformation):
                         print(f"[apply] iedge.data.subset: {iedge.data.subset[index]}", flush=True)
                         copy_memlet.subset[index] = new_ranges[index]
                         new_volume *= new_ranges[index][1] - new_ranges[index][0] + 1
-                    iedge.data.volume = int(new_volume)
+                    copy_memlet.volume = int(new_volume)
                     graph.add_edge(iedge.src, iedge.src_conn, map_entry_copy, iedge.dst_conn, copy_memlet)
 
             for i, oedge in enumerate(graph.out_edges(map_exit)):
                 print(f"[apply] copy map_exit oedge {i}: {oedge}", flush=True)
                 copy_memlet = copy.deepcopy(oedge.data)
+                new_volume = 1
+                for index in range(len(oedge.data.subset)):
+                    print(f"[apply] oedge.data.subset: {oedge.data.subset[index]}", flush=True)
+                    copy_memlet.subset[index] = new_ranges[index]
+                    new_volume *= new_ranges[index][1] - new_ranges[index][0] + 1
+                copy_memlet.volume = int(new_volume)
                 graph.add_edge(map_exit_copy, oedge.src_conn, oedge.dst, oedge.dst_conn, copy_memlet)
         
             for node in graph.scope_subgraph(map_entry, include_entry=False, include_exit=False).nodes():
