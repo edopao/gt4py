@@ -175,23 +175,45 @@ class HorizontalMapFusion(dace_transformation.SingleStateTransformation):
             map_entry: dace_nodes.MapEntry,
             map_exit: dace_nodes.MapExit,
             new_ranges: list[dace.subsets.Range],
-        ) -> tuple[dace_nodes.MapEntry, dace_nodes.MapExit]:
-            # Create a copy of the map
-            map_entry_copy = copy.deepcopy(map_entry)
-            map_exit_copy = copy.deepcopy(map_exit)
+        ) -> tuple[dace_nodes.MapEntry, dace_nodes.MapExit]:            
+            new_nodes = {}
 
-            map_entry_copy.map.label = f"{map_entry.label}_copy"
-            map_exit_copy.map.label = f"{map_exit.label}_copy"
+            map_nodes = graph.scope_subgraph(map_entry, include_entry=True, include_exit=True).nodes()
+            map_edges = graph.scope_subgraph(map_entry, include_entry=True, include_exit=True).edges()
 
-            for range_index in range(len(map_entry.map.range)):
-                map_entry_copy.map.range[range_index] = new_ranges[range_index]
-            for range_index in range(len(map_exit.map.range)):
-                map_exit_copy.map.range[range_index] = new_ranges[range_index]
+            map_entry_copy = None
+            map_exit_copy = None
 
-            graph.add_node(map_entry_copy)
-            graph.add_node(map_exit_copy)
-            edge_to_remove = graph.add_edge(map_entry_copy, None, map_exit_copy, None, dace.memlet.Memlet())
+            for node in map_nodes:
+                node_ = copy.deepcopy(node)
+                graph.add_node(node_)
+                new_nodes[node] = node_
+                if node == map_entry:
+                    node_.map.label = f"{node.label}_copy"
+                    for range_index in range(len(map_entry.map.range)):
+                        node_.map.range[range_index] = new_ranges[range_index]
+                    map_entry_copy = node_
+                elif node == map_exit:
+                    node_.map.label = f"{node.label}_copy"
+                    for range_index in range(len(map_exit.map.range)):
+                        node_.map.range[range_index] = new_ranges[range_index]
+                    map_exit_copy = node_
 
+            for edge in map_edges:
+                print(f"[apply] map_edges edge: {edge}", flush=True)
+                if edge.src in map_nodes and edge.dst in map_nodes and edge.src != map_entry and edge.dst != map_exit:
+                    print("[apply] edge inside the map", flush=True)
+                    graph.add_edge(new_nodes[edge.src], edge.src_conn, new_nodes[edge.dst], edge.dst_conn,
+                                copy.deepcopy(edge.data))
+                elif edge.dst == map_exit:
+                    print("[apply] edge to map_exit", flush=True)
+                    graph.add_edge(new_nodes[edge.src], edge.src_conn, map_exit_copy, edge.dst_conn, copy.deepcopy(edge.data))
+                    map_exit_copy.add_in_connector(edge.dst_conn)
+                elif edge.src == map_entry:
+                    print("[apply] edge from map_entry", flush=True)
+                    graph.add_edge(map_entry_copy, edge.src_conn, new_nodes[edge.dst], edge.dst_conn, copy.deepcopy(edge.data))
+                    map_entry_copy.add_out_connector(edge.src_conn)
+            
             for i, iedge in enumerate(graph.in_edges(map_entry)):
                 if iedge.src_conn not in map_entry_copy.in_connectors:
                     print(f"[apply] copy map_entry iedge {i}: {iedge}", flush=True)
@@ -214,30 +236,6 @@ class HorizontalMapFusion(dace_transformation.SingleStateTransformation):
                     new_volume *= new_ranges[index][1] - new_ranges[index][0] + 1
                 copy_memlet.volume = int(new_volume)
                 graph.add_edge(map_exit_copy, oedge.src_conn, oedge.dst, oedge.dst_conn, copy_memlet)
-        
-            for node in graph.scope_subgraph(map_entry, include_entry=False, include_exit=False).nodes():
-                # TODO(iomaganaris): Make sure that everything inside the map is copied
-                print(f"[apply] map_entry node {i}: {node}", flush=True)
-                if isinstance(node, dace_nodes.Tasklet):
-                    new_tasklet = copy.deepcopy(node)
-                    new_tasklet.label = f"{node.label}_copy"
-                    graph.add_node(new_tasklet)
-                    for iedge in graph.in_edges(node):
-                        if iedge.src == map_entry:
-                            print(f"[apply] node has iedge to map_entry: {iedge}", flush=True)
-                            copy_memlet = copy.deepcopy(iedge.data)
-                            graph.add_edge(map_entry_copy, iedge.src_conn, new_tasklet, iedge.dst_conn, copy_memlet)
-                            map_entry_copy.add_out_connector(iedge.src_conn)
-                    for oedge in graph.out_edges(node):
-                        if oedge.dst == map_exit:
-                            print(f"[apply] node has oedge to map_exit: {oedge}", flush=True)
-                            copy_memlet = copy.deepcopy(oedge.data)
-                            map_exit_copy.add_in_connector(oedge.dst_conn)
-                            graph.add_edge(new_tasklet, oedge.src_conn, map_exit_copy, oedge.dst_conn, copy_memlet)             
-
-            # Remove the edge from new_map_entry to new_map_exit_copy
-            # Fixes issue with cycle
-            graph.remove_edge(edge_to_remove)
 
             return map_entry_copy, map_exit_copy
         
@@ -249,10 +247,6 @@ class HorizontalMapFusion(dace_transformation.SingleStateTransformation):
             ))
         
         copy_full_map(graph, first_map_entry, first_map_exit, overlapping_ranges)
-
-        # TODO(iomaganaris): Modify the range of the original map properly
-        # TODO(iomaganaris): Need to find all the possible ranges that are not overlapping and copy the original map for each one of them
-        # TODO(iomaganaris): Create function that copies map based on the above and takes as input the range of the map as well
 
         # write a function that finds ranges that are not overlapping. for example range1: 0:10 and range2: 5:15 should be set to 0:5 and 10:15
         def find_non_overlapping_ranges(
@@ -292,14 +286,6 @@ class HorizontalMapFusion(dace_transformation.SingleStateTransformation):
         for combination in range_combinations:
             print(f"[apply] Processing combination: {combination}", flush=True)
             copy_full_map(graph, first_map_entry, first_map_exit, list(combination))
-        # # add the ranges to the map
-        # for range_index in range(len(first_map_entry.map.range)):
-        #     first_map_entry.map.range[range_index] = ranges_to_add[range_index]
-        # # add the ranges to the map
-        # for range_index in range(len(first_map_exit.map.range)):
-        #     first_map_exit.map.range[range_index] = ranges_to_add[range_index]
-        # graph.remove_node(first_map_exit)
-        # graph.remove_node(first_map_entry)
 
         for node in graph.scope_subgraph(first_map_entry, include_entry=True, include_exit=True).nodes():
             print(f"[apply] first_map_entry node: {node}", flush=True)
