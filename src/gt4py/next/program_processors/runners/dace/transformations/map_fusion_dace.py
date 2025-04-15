@@ -853,6 +853,24 @@ class MapFusion(transformation.SingleStateTransformation):
                 from_node.remove_in_connector(dmr_symbol)
 
             else:
+                # # We have a Passthrough connection, i.e. there exists a matching `OUT_`.
+                # old_conn = edge_to_move.dst_conn[3:]  # The connection name without prefix
+                # in_connection_already_exists = edge_to_move.dst_conn in to_node.in_connectors
+                # out_connection_already_exists = "OUT_" + old_conn in to_node.out_connectors
+                # new_conn = to_node.next_connector(old_conn)
+                # dst_in_conn = edge_to_move.dst_conn if in_connection_already_exists else "IN_" + new_conn
+                # dst_out_conn = "OUT_" + old_conn if out_connection_already_exists else "OUT_" + new_conn
+
+                # if not in_connection_already_exists:
+                #     to_node.add_in_connector("IN_" + new_conn)
+                # for e in list(state.in_edges_by_connector(from_node, "IN_" + old_conn)):
+                #     helpers.redirect_edge(state, e, new_dst=to_node, new_dst_conn=dst_in_conn)
+                # if not out_connection_already_exists:
+                #     to_node.add_out_connector("OUT_" + new_conn)
+                # for e in list(state.out_edges_by_connector(from_node, "OUT_" + old_conn)):
+                #     helpers.redirect_edge(state, e, new_src=to_node, new_src_conn=dst_out_conn)
+                # from_node.remove_in_connector("IN_" + old_conn)
+                # from_node.remove_out_connector("OUT_" + old_conn)
                 # We have a Passthrough connection, i.e. there exists a matching `OUT_`.
                 old_conn = edge_to_move.dst_conn[3:]  # The connection name without prefix
                 new_conn = to_node.next_connector(old_conn)
