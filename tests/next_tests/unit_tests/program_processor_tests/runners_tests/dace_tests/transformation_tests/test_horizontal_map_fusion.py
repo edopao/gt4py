@@ -21,6 +21,7 @@ from dace.sdfg import nodes as dace_nodes
 from typing import Callable
 import numpy as np
 from dace.sdfg import nodes as dace_nodes, propagation as dace_propagation
+from sympy.core.numbers import Number
 
 @overload
 def count_nodes(
@@ -148,7 +149,7 @@ def _make_serial_sdfg_1(
     # Now create the map
     mentry, mexit = state.add_map(
         "complex_map",
-        ndrange={"i": f"0:{N}", "j": f"0:{N}"},
+        ndrange={"i": f"0:{N}", "j": "horizontal_start:horizontal_end"},
     )
 
     # Now assemble everything.
@@ -174,7 +175,7 @@ def _make_serial_sdfg_1(
 
     tasklet2, map_entry2, map_exit2 = state.add_mapped_tasklet(
         name="second_computation",
-        map_ranges=[("__i0", f"0:{N//2}"), ("__i1", f"0:{N}")],
+        map_ranges=[("__i0", f"0:{N//2}"), ("__i1", "horizontal_start:horizontal_end")],
         inputs={"__in0": dace.Memlet("b[__i0, __i1]")},
         code="__out = __in0 + 1.0",
         outputs={"__out": dace.Memlet("out2[__i0, __i1]")},
@@ -183,7 +184,7 @@ def _make_serial_sdfg_1(
 
     tasklet3, map_entry3, map_exit3 = state.add_mapped_tasklet(
         name="third_computation",
-        map_ranges=[("__i3", f"0:{N//2}"), ("__i4", f"0:{N}")],
+        map_ranges=[("__i3", f"0:{N//2}"), ("__i4", "horizontal_start:horizontal_end")],
         inputs={"__in0": dace.Memlet("c[__i3, __i4]"), "__in1": dace.Memlet("a[__i3, __i4]")},
         code="__out = __in0 + __in1 + 1.0",
         outputs={"__out": dace.Memlet("out3[__i3, __i4]")},
@@ -192,7 +193,7 @@ def _make_serial_sdfg_1(
 
     tasklet4, map_entry4, map_exit4 = state.add_mapped_tasklet(
         name="fourth_computation",
-        map_ranges=[("__i3", f"{N//4}:{N}"), ("__i4", f"0:{N}")],
+        map_ranges=[("__i3", f"{N//4}:{N}"), ("__i4", "horizontal_start:horizontal_end")],
         inputs={"__in0": dace.Memlet("d[__i3, __i4]"), "__in1": dace.Memlet("a[__i3, __i4]")},
         code="__out = __in0 + __in1 + 2.0",
         outputs={"__out": dace.Memlet("out4[__i3, __i4]")},
@@ -259,6 +260,10 @@ def test_vertical_map_fusion():
                         ranges_overlap = True
                         for dim in range(len(range_i)):
                             # check range[dim] overlap
+                            if not ((isinstance(range_i[dim][0], (Number, int)) and isinstance(range_i[dim][1], (Number, int))) or (isinstance(range_j[dim][0], (Number, int)) and isinstance(range_j[dim][1], (Number, int)))):
+                                if range_i[dim][0] != range_j[dim][0] or range_i[dim][1] != range_j[dim][1]:
+                                    ranges_overlap = False
+                                continue
                             if range_i[dim][0] >= range_j[dim][1] or range_j[dim][0] >= range_i[dim][1]:
                                 ranges_overlap = False
                         assert not ranges_overlap, f"Found maps with overlapping ranges: {map_entry_i.label} and {map_entry_j.label} [{iedge.src.label}]"

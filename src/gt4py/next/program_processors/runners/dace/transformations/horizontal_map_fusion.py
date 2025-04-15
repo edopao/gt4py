@@ -19,6 +19,8 @@ from dace.sdfg.propagation import propagate_memlets_state
 from gt4py.next.program_processors.runners.dace import transformations as gtx_transformations
 from itertools import product
 
+from sympy.core.numbers import Number
+
 def gt_horizontal_map_fusion(
     sdfg: dace.SDFG,
     run_simplify: bool,
@@ -63,7 +65,10 @@ class HorizontalMapFusion(dace_transformation.SingleStateTransformation):
         self,
         range1: dace.subsets.Range,
         range2: dace.subsets.Range,
-    ) -> tuple[int, int, int]:
+    ) -> dace.subsets.Range:
+        # if ranges are str then they are the same otherwise the transformation wouldn't be applied
+        if not (isinstance(range1[0], (Number, int)) and isinstance(range1[1], (Number, int)) and isinstance(range2[0], (Number, int)) and isinstance(range2[1], (Number, int))):
+            return range1
         start = int(max(range1[0], range2[0]))
         end = int(min(range1[1], range2[1]))
         return start, end, int(range1[2])
@@ -133,12 +138,25 @@ class HorizontalMapFusion(dace_transformation.SingleStateTransformation):
                             range2 = second_map_entry.map.range[range_index]
                             print(f"[can_be_applied] range1: {range1}", flush=True)
                             print(f"[can_be_applied] range2: {range2}", flush=True)
+                            print(f"[can_be_applied] range1[0] type: {type(range1[0])}", flush=True)
+                            print(f"[can_be_applied] range1[1] type: {type(range1[1])}", flush=True)
+                            print(f"[can_be_applied] range2[0] type: {type(range2[0])}", flush=True)
+                            print(f"[can_be_applied] range2[1] type: {type(range2[1])}", flush=True)
+                            # if range1 and range2 are str check if they are the same
+                            if not (isinstance(range1[0], (Number, int)) and isinstance(range1[1], (Number, int)) and isinstance(range2[0], (Number, int)) and isinstance(range2[1], (Number, int))):
+                                print("[can_be_applied] range1 and range2 are str", flush=True)
+                                print(f"[can_be_applied] range1[0]: {range1[0]} range1[1]: {range1[1]}", flush=True)
+                                print(f"[can_be_applied] range2[0]: {range2[0]} range2[1]: {range2[1]}", flush=True)
+                                if range1[0] != range2[0] or range1[1] != range2[1]:
+                                    print(f"[can_be_applied] string range1 and range2 are not the same at index {range_index}", flush=True)
+                                    all_ranges_are_the_same = False
+                                continue
                             overlapping_range = self.find_overlapping_range(
                                 range1,
                                 range2,
                             )
                             print(f"[can_be_applied] overlapping_range: {overlapping_range}", flush=True)
-                            if int(overlapping_range[0]) == int(overlapping_range[1]) or int(overlapping_range[0]) > int(overlapping_range[1]):
+                            if int(overlapping_range[0]) >= int(overlapping_range[1]):
                                 print(f"[can_be_applied] range1 is not smaller than range2 at index {range_index}", flush=True)
                                 return_value = False
                                 break
@@ -243,10 +261,14 @@ class HorizontalMapFusion(dace_transformation.SingleStateTransformation):
         def find_non_overlapping_ranges(
             range1: dace.subsets.Range,
             range2: dace.subsets.Range,
-        ) -> list[tuple[int, int, int]]:
+        ) -> dace.subsets.Range:
             start1, end1, stride1 = range1
             start2, end2, stride2 = range2
             assert stride1 == stride2, "Strides must be the same"
+            # if ranges are str then they are the same otherwise the transformation wouldn't be applied
+            print(f"[apply] range1[0] type: {type(range1[0])} is number?: {isinstance(range1[0], Number)}", flush=True)
+            if not ((isinstance(range1[0], (Number, int)) and isinstance(range1[1], (Number, int))) or (isinstance(range2[0], (Number, int)) and isinstance(range2[1], (Number, int)))):
+                return [range1]
             ranges = []
             if start1 < start2:
                 ranges.append((int(start1), int(start2-1), int(stride1)))
@@ -287,3 +309,6 @@ class HorizontalMapFusion(dace_transformation.SingleStateTransformation):
         # import pdb; pdb.set_trace()  # noqa: E701
 
         propagate_memlets_state(sdfg, graph)
+
+        # sdfg.view()
+        # import pdb; pdb.set_trace()  # noqa: E701
