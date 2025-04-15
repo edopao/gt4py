@@ -235,6 +235,8 @@ def is_floating_point(symbol_type: ts.TypeSpec) -> bool:
     >>> is_floating_point(ts.FieldType(dims=[], dtype=ts.ScalarType(kind=ts.ScalarKind.FLOAT32)))
     True
     """
+    if not isinstance(symbol_type, (ts.ScalarType, ts.FieldType)):
+        return False
     return isinstance(dtype := extract_dtype(symbol_type), ts.ScalarType) and dtype.kind in [
         ts.ScalarKind.FLOAT32,
         ts.ScalarKind.FLOAT64,
@@ -278,6 +280,8 @@ def is_integral(symbol_type: ts.TypeSpec) -> bool:
     >>> is_integral(ts.FieldType(dims=[], dtype=ts.ScalarType(kind=ts.ScalarKind.INT32)))
     True
     """
+    if not isinstance(symbol_type, (ts.ScalarType, ts.FieldType)):
+        return False
     return is_integer(extract_dtype(symbol_type))
 
 
@@ -305,7 +309,8 @@ def is_number(symbol_type: ts.TypeSpec) -> bool:
 
 def is_logical(symbol_type: ts.TypeSpec) -> bool:
     return (
-        isinstance(dtype := extract_dtype(symbol_type), ts.ScalarType)
+        isinstance(symbol_type, (ts.FieldType, ts.ScalarType))
+        and isinstance(dtype := extract_dtype(symbol_type), ts.ScalarType)
         and dtype.kind is ts.ScalarKind.BOOL
     )
 
@@ -597,7 +602,7 @@ def return_type(
     with_kwargs: dict[str, ts.TypeSpec],
 ) -> ts.TypeSpec:
     raise NotImplementedError(
-        f"Return type deduction of type " f"'{type(callable_type).__name__}' not implemented."
+        f"Return type deduction of type '{type(callable_type).__name__}' not implemented."
     )
 
 
@@ -656,7 +661,7 @@ def canonicalize_arguments(
     *,
     ignore_errors: bool = False,
     use_signature_ordering: bool = False,
-) -> tuple[list, dict]:
+) -> tuple[tuple, dict]:
     raise NotImplementedError(f"Not implemented for type '{type(func_type).__name__}'.")
 
 
@@ -668,7 +673,7 @@ def canonicalize_function_arguments(
     *,
     ignore_errors: bool = False,
     use_signature_ordering: bool = False,
-) -> tuple[list, dict]:
+) -> tuple[tuple, dict]:
     num_pos_params = len(func_type.pos_only_args) + len(func_type.pos_or_kw_args)
     cargs = [UNDEFINED_ARG] * max(num_pos_params, len(args))
     ckwargs = {**kwargs}
@@ -696,7 +701,7 @@ def canonicalize_function_arguments(
     if use_signature_ordering:
         ckwargs = {k: ckwargs[k] for k in func_type.kw_only_args.keys() if k in ckwargs}
 
-    return list(cargs), ckwargs
+    return tuple(cargs), ckwargs
 
 
 def structural_function_signature_incompatibilities(
