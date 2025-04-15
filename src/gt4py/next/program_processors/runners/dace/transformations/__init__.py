@@ -26,6 +26,7 @@ from .map_fusion import MapFusion, MapFusionParallel, MapFusionSerial
 from .map_orderer import MapIterationOrder, gt_set_iteration_order
 from .map_promoter import SerialMapPromoter
 from .map_range_splitter import MapRangeSplitter
+from .move_dataflow_into_if_body import MoveDataflowIntoIfBody
 from .redundant_array_removers import (
     CopyChainRemover,
     MultiStateGlobalSelfCopyElimination,
@@ -68,6 +69,7 @@ __all__ = [
     "MapFusionSerial",
     "MapIterationOrder",
     "MapRangeSplitter",
+    "MoveDataflowIntoIfBody",
     "MultiStateGlobalSelfCopyElimination",
     "SerialMapPromoter",
     "SerialMapPromoterGPU",
