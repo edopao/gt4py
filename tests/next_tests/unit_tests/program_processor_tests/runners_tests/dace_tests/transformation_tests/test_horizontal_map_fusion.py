@@ -174,7 +174,7 @@ def _make_serial_sdfg_1(
 
     tasklet2, map_entry2, map_exit2 = state.add_mapped_tasklet(
         name="second_computation",
-        map_ranges=[("__i0", f"0:{N/2}"), ("__i1", f"0:{N}")],
+        map_ranges=[("__i0", f"0:{N//2}"), ("__i1", f"0:{N}")],
         inputs={"__in0": dace.Memlet("b[__i0, __i1]")},
         code="__out = __in0 + 1.0",
         outputs={"__out": dace.Memlet("out2[__i0, __i1]")},
@@ -183,7 +183,7 @@ def _make_serial_sdfg_1(
 
     tasklet3, map_entry3, map_exit3 = state.add_mapped_tasklet(
         name="third_computation",
-        map_ranges=[("__i3", f"0:{N/2}"), ("__i4", f"0:{N}")],
+        map_ranges=[("__i3", f"0:{N//2}"), ("__i4", f"0:{N}")],
         inputs={"__in0": dace.Memlet("c[__i3, __i4]"), "__in1": dace.Memlet("a[__i3, __i4]")},
         code="__out = __in0 + __in1 + 1.0",
         outputs={"__out": dace.Memlet("out3[__i3, __i4]")},
@@ -192,7 +192,7 @@ def _make_serial_sdfg_1(
 
     tasklet4, map_entry4, map_exit4 = state.add_mapped_tasklet(
         name="fourth_computation",
-        map_ranges=[("__i3", f"{N/4}:{N}"), ("__i4", f"0:{N}")],
+        map_ranges=[("__i3", f"{N//4}:{N}"), ("__i4", f"0:{N}")],
         inputs={"__in0": dace.Memlet("d[__i3, __i4]"), "__in1": dace.Memlet("a[__i3, __i4]")},
         code="__out = __in0 + __in1 + 2.0",
         outputs={"__out": dace.Memlet("out4[__i3, __i4]")},
