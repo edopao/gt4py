@@ -209,6 +209,15 @@ def gt_auto_optimize(
                 break
             gtx_transformations.gt_simplify(sdfg)
 
+        # Call horizontal map fusion to fuse together operations that are applied
+        # to the same ranges
+        gtx_transformations.gt_horizontal_map_fusion(
+            sdfg=sdfg,
+            run_simplify=False,
+            validate=False,
+            validate_all=False,
+        )
+
         # Phase 4: Iteration Space
         #   This essentially ensures that the stride 1 dimensions are handled
         #   by the inner most loop nest (CPU) or x-block (GPU)
