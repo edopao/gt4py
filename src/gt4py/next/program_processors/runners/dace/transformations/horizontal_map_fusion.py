@@ -14,6 +14,7 @@ import dace
 from dace import properties as dace_properties, transformation as dace_transformation
 from dace.sdfg import nodes as dace_nodes, graph
 from dace.transformation.passes import analysis as dace_analysis
+from dace.sdfg.propagation import propagate_memlets_state
 
 from gt4py.next.program_processors.runners.dace import transformations as gtx_transformations
 from itertools import product
@@ -220,23 +221,11 @@ class HorizontalMapFusion(dace_transformation.SingleStateTransformation):
                 if iedge.src_conn not in map_entry_copy.in_connectors:
                     print(f"[apply] copy map_entry iedge {i}: {iedge}", flush=True)
                     copy_memlet = copy.deepcopy(iedge.data)
-                    new_volume = 1
-                    for index in range(len(iedge.data.subset)):
-                        print(f"[apply] iedge.data.subset: {iedge.data.subset[index]}", flush=True)
-                        copy_memlet.subset[index] = new_ranges[index]
-                        new_volume *= new_ranges[index][1] - new_ranges[index][0] + 1
-                    copy_memlet.volume = int(new_volume)
                     graph.add_edge(iedge.src, iedge.src_conn, map_entry_copy, iedge.dst_conn, copy_memlet)
 
             for i, oedge in enumerate(graph.out_edges(map_exit)):
                 print(f"[apply] copy map_exit oedge {i}: {oedge}", flush=True)
                 copy_memlet = copy.deepcopy(oedge.data)
-                new_volume = 1
-                for index in range(len(oedge.data.subset)):
-                    print(f"[apply] oedge.data.subset: {oedge.data.subset[index]}", flush=True)
-                    copy_memlet.subset[index] = new_ranges[index]
-                    new_volume *= new_ranges[index][1] - new_ranges[index][0] + 1
-                copy_memlet.volume = int(new_volume)
                 graph.add_edge(map_exit_copy, oedge.src_conn, oedge.dst, oedge.dst_conn, copy_memlet)
 
             return map_entry_copy, map_exit_copy
@@ -296,3 +285,5 @@ class HorizontalMapFusion(dace_transformation.SingleStateTransformation):
 
         # sdfg.view()
         # import pdb; pdb.set_trace()  # noqa: E701
+
+        propagate_memlets_state(sdfg, graph)
