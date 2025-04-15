@@ -176,6 +176,7 @@ class HorizontalMapFusion(dace_transformation.SingleStateTransformation):
             map_entry: dace_nodes.MapEntry,
             map_exit: dace_nodes.MapExit,
             new_ranges: list[dace.subsets.Range],
+            suffix: str = "copy",
         ) -> tuple[dace_nodes.MapEntry, dace_nodes.MapExit]:            
             new_nodes = {}
 
@@ -190,12 +191,12 @@ class HorizontalMapFusion(dace_transformation.SingleStateTransformation):
                 graph.add_node(node_)
                 new_nodes[node] = node_
                 if node == map_entry:
-                    node_.map.label = f"{node.label}_copy"
+                    node_.map.label = f"{node.label}_{suffix}"
                     for range_index in range(len(map_entry.map.range)):
                         node_.map.range[range_index] = new_ranges[range_index]
                     map_entry_copy = node_
                 elif node == map_exit:
-                    node_.map.label = f"{node.label}_copy"
+                    node_.map.label = f"{node.label}_{suffix}"
                     for range_index in range(len(map_exit.map.range)):
                         node_.map.range[range_index] = new_ranges[range_index]
                     map_exit_copy = node_
@@ -247,7 +248,7 @@ class HorizontalMapFusion(dace_transformation.SingleStateTransformation):
                 second_map_entry.map.range[range_index],
             ))
         
-        copy_full_map(graph, first_map_entry, first_map_exit, overlapping_ranges)
+        copy_full_map(graph, first_map_entry, first_map_exit, overlapping_ranges, "overlap")
 
         # write a function that finds ranges that are not overlapping. for example range1: 0:10 and range2: 5:15 should be set to 0:5 and 10:15
         def find_non_overlapping_ranges(
@@ -287,7 +288,7 @@ class HorizontalMapFusion(dace_transformation.SingleStateTransformation):
         # Iterate through each combination and create copies of the map
         for combination in range_combinations:
             print(f"[apply] Processing combination: {combination}", flush=True)
-            copy_full_map(graph, first_map_entry, first_map_exit, list(combination))
+            copy_full_map(graph, first_map_entry, first_map_exit, list(combination), "copy")
 
         for node in graph.scope_subgraph(first_map_entry, include_entry=True, include_exit=True).nodes():
             print(f"[apply] first_map_entry node: {node}", flush=True)

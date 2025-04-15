@@ -147,7 +147,7 @@ def _make_serial_sdfg_1(
 
     # Now create the map
     mentry, mexit = state.add_map(
-        "map",
+        "complex_map",
         ndrange={"i": f"0:{N}", "j": f"0:{N}"},
     )
 
@@ -226,9 +226,10 @@ def _make_serial_sdfg_1(
     return sdfg
 
 def test_vertical_map_fusion():
-    sdfg = _make_serial_sdfg_1(20)
+    N = 20
+    sdfg = _make_serial_sdfg_1(N)
     sdfg.view()
-    import pdb; pdb.set_trace()
+    # import pdb; pdb.set_trace()
     _ = gtx_transformations.gt_horizontal_map_fusion(
         sdfg=sdfg,
         run_simplify=False,
@@ -236,6 +237,32 @@ def test_vertical_map_fusion():
         validate_all=False,
     )
     sdfg.view()
+    # Check that the SDFG is valid after the transformation.
+    sdfg.validate()
+    # Check that the number of maps is reduced.
+    assert count_nodes(sdfg, dace_nodes.MapEntry) == 3
+    assert count_nodes(sdfg, dace_nodes.MapExit) == 3
+
+    # check that there is no overlap between the maps' ranges
+    map_entries = count_nodes(sdfg, dace_nodes.MapEntry, return_nodes=True)
+    # check that there are no maps with overlapping ranges if they share an input
+    for i in range(len(map_entries)):
+        for j in range(i + 1, len(map_entries)):
+            map_entry_i = map_entries[i]
+            map_entry_j = map_entries[j]
+            for iedge in sdfg.state(0).in_edges(map_entry_i):
+                for jedge in sdfg.state(0).in_edges(map_entry_j):
+                    if iedge.src == jedge.src and iedge.src_conn == jedge.src_conn:
+                        # check that the ranges are not overlapping
+                        range_i = map_entry_i.map.range
+                        range_j = map_entry_j.map.range
+                        ranges_overlap = True
+                        for dim in range(len(range_i)):
+                            # check range[dim] overlap
+                            if range_i[dim][0] >= range_j[dim][1] or range_j[dim][0] >= range_i[dim][1]:
+                                ranges_overlap = False
+                        assert not ranges_overlap, f"Found maps with overlapping ranges: {map_entry_i.label} and {map_entry_j.label} [{iedge.src.label}]"
+
 
 if __name__ == "__main__":
     test_vertical_map_fusion()
