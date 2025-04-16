@@ -199,8 +199,9 @@ class HorizontalMapFusion(dace_transformation.SingleStateTransformation):
         ) -> tuple[dace_nodes.MapEntry, dace_nodes.MapExit]:            
             new_nodes = {}
 
-            map_nodes = graph.scope_subgraph(map_entry, include_entry=True, include_exit=True).nodes()
-            map_edges = graph.scope_subgraph(map_entry, include_entry=True, include_exit=True).edges()
+            subgraph = graph.scope_subgraph(map_entry, include_entry=True, include_exit=True)
+            map_nodes = subgraph.nodes()
+            map_edges = subgraph.edges()
 
             map_entry_copy = None
             map_exit_copy = None
@@ -210,33 +211,21 @@ class HorizontalMapFusion(dace_transformation.SingleStateTransformation):
                 graph.add_node(node_)
                 new_nodes[node] = node_
                 if node == map_entry:
+                    # map_entry.map is same as map_exit.map
                     node_.map.label = f"{node.label}_{suffix}"
                     for range_index in range(len(map_entry.map.range)):
                         node_.map.range[range_index] = new_ranges[range_index]
                     map_entry_copy = node_
                 elif node == map_exit:
-                    node_.map.label = f"{node.label}_{suffix}"
-                    for range_index in range(len(map_exit.map.range)):
-                        node_.map.range[range_index] = new_ranges[range_index]
                     map_exit_copy = node_
 
             for edge in map_edges:
                 print(f"[apply] map_edges edge: {edge}", flush=True)
-                if edge.src in map_nodes and edge.dst in map_nodes and edge.src != map_entry and edge.dst != map_exit:
-                    print("[apply] edge inside the map", flush=True)
-                    graph.add_edge(new_nodes[edge.src], edge.src_conn, new_nodes[edge.dst], edge.dst_conn,
-                                copy.deepcopy(edge.data))
-                elif edge.dst == map_exit:
-                    print("[apply] edge to map_exit", flush=True)
-                    graph.add_edge(new_nodes[edge.src], edge.src_conn, map_exit_copy, edge.dst_conn, copy.deepcopy(edge.data))
-                    map_exit_copy.add_in_connector(edge.dst_conn)
-                elif edge.src == map_entry:
-                    print("[apply] edge from map_entry", flush=True)
-                    graph.add_edge(map_entry_copy, edge.src_conn, new_nodes[edge.dst], edge.dst_conn, copy.deepcopy(edge.data))
-                    map_entry_copy.add_out_connector(edge.src_conn)
+                graph.add_edge(new_nodes[edge.src], edge.src_conn, new_nodes[edge.dst], edge.dst_conn,
+                            copy.deepcopy(edge.data))
             
             for i, iedge in enumerate(graph.in_edges(map_entry)):
-                if iedge.src_conn not in map_entry_copy.in_connectors:
+                if iedge.data not in [map_entry_copy_edge.data for map_entry_copy_edge in graph.in_edges(map_entry_copy)]:
                     print(f"[apply] copy map_entry iedge {i}: {iedge}", flush=True)
                     copy_memlet = copy.deepcopy(iedge.data)
                     graph.add_edge(iedge.src, iedge.src_conn, map_entry_copy, iedge.dst_conn, copy_memlet)
@@ -247,7 +236,7 @@ class HorizontalMapFusion(dace_transformation.SingleStateTransformation):
                 graph.add_edge(map_exit_copy, oedge.src_conn, oedge.dst, oedge.dst_conn, copy_memlet)
 
             return map_entry_copy, map_exit_copy
-        
+
         overlapping_ranges = []
         for range_index in range(len(first_map_entry.map.range)):
             overlapping_ranges.append(self.find_overlapping_range(
