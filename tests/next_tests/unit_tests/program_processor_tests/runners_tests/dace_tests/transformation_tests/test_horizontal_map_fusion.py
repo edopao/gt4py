@@ -98,6 +98,8 @@ def _make_serial_sdfg_1(
     sdfg.add_scalar("tmp1", dtype=dace.float64, transient=True)
     sdfg.add_scalar("tmp2", dtype=dace.float64, transient=True)
     a, b, out1, tmp1, tmp2 = (state.add_access(name) for name in ["a", "b", "out1", "tmp1", "tmp2"])
+    sdfg.add_symbol("horizontal_start", dace.int32)
+    sdfg.add_symbol("horizontal_end", dace.int32)
 
     # tasklet1, map_entry1, map_exit1 = state.add_mapped_tasklet(
     #     name="first_computation",
