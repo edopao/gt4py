@@ -232,6 +232,8 @@ class HorizontalMapFusion(dace_transformation.SingleStateTransformation):
                         new_data_descriptors[node_name] = new_data_desc
                     else:
                         raise ValueError(f"Unsupported node type: {type(node_desc)}")
+                elif isinstance(node, dace_nodes.NestedSDFG):
+                    raise NotImplementedError("Nested SDFGs are not supported yet")
                 else:
                     # change label to a unique name
                     if not (isinstance(node, dace_nodes.MapEntry) or isinstance(node, dace_nodes.MapExit)):
