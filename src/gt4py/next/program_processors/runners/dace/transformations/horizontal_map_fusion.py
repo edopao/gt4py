@@ -138,14 +138,10 @@ class HorizontalMapFusion(dace_transformation.SingleStateTransformation):
                             range2 = second_map_entry.map.range[range_index]
                             print(f"[can_be_applied] range1: {range1}", flush=True)
                             print(f"[can_be_applied] range2: {range2}", flush=True)
-                            print(f"[can_be_applied] range1[0] type: {type(range1[0])}", flush=True)
-                            print(f"[can_be_applied] range1[1] type: {type(range1[1])}", flush=True)
-                            print(f"[can_be_applied] range2[0] type: {type(range2[0])}", flush=True)
-                            print(f"[can_be_applied] range2[1] type: {type(range2[1])}", flush=True)
-                            # TODO(iomaganaris): Need to make sure that 1st range is smaller than 2nd range for multiple dimensions
-                            if range1[0] > range2[0]:
-                                print(f"[can_be_applied] range1 starts before range2 at index {range_index}", flush=True)
-                                continue
+                            # print(f"[can_be_applied] range1[0] type: {type(range1[0])}", flush=True)
+                            # print(f"[can_be_applied] range1[1] type: {type(range1[1])}", flush=True)
+                            # print(f"[can_be_applied] range2[0] type: {type(range2[0])}", flush=True)
+                            # print(f"[can_be_applied] range2[1] type: {type(range2[1])}", flush=True)
                             # if range1 and range2 are str check if they are the same
                             if not (isinstance(range1[0], (Number, int)) and isinstance(range1[1], (Number, int)) and isinstance(range2[0], (Number, int)) and isinstance(range2[1], (Number, int))):
                                 print("[can_be_applied] range1 and range2 are str", flush=True)
@@ -153,7 +149,11 @@ class HorizontalMapFusion(dace_transformation.SingleStateTransformation):
                                 print(f"[can_be_applied] range2[0]: {range2[0]} range2[1]: {range2[1]}", flush=True)
                                 if range1[0] != range2[0] or range1[1] != range2[1]:
                                     print(f"[can_be_applied] string range1 and range2 are not the same at index {range_index}", flush=True)
-                                    all_ranges_are_the_same = False
+                                    # all_ranges_are_the_same = False
+                                continue
+                            # TODO(iomaganaris): Need to make sure that 1st range is smaller than 2nd range for multiple dimensions
+                            if range1[0] > range2[0]:
+                                print(f"[can_be_applied] range1 starts before range2 at index {range_index}", flush=True)
                                 continue
                             overlapping_range = self.find_overlapping_range(
                                 range1,
@@ -237,11 +237,12 @@ class HorizontalMapFusion(dace_transformation.SingleStateTransformation):
                     if not (isinstance(node, dace_nodes.MapEntry) or isinstance(node, dace_nodes.MapExit)):
                         # handled later
                         node_.label = f"{node.label}_{suffix}"
+                    else:
+                        node_.map.label = f"{node.label}_{suffix}"
                     graph.add_node(node_)
                 new_nodes[node] = node_
                 if node == map_entry:
                     # map_entry.map is same as map_exit.map
-                    node_.map.label = f"{node.label}_{suffix}"
                     for range_index in range(len(map_entry.map.range)):
                         node_.map.range[range_index] = new_ranges[range_index]
                     map_entry_copy = node_

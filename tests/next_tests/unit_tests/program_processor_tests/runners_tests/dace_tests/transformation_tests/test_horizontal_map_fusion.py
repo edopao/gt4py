@@ -97,7 +97,9 @@ def _make_serial_sdfg_1(
 
     sdfg.add_scalar("tmp1", dtype=dace.float64, transient=True)
     sdfg.add_scalar("tmp2", dtype=dace.float64, transient=True)
-    a, b, out1, tmp1, tmp2 = (state.add_access(name) for name in ["a", "b", "out1", "tmp1", "tmp2"])
+    sdfg.add_scalar("tmp3", dtype=dace.float64, transient=True)
+    sdfg.add_scalar("tmp4", dtype=dace.float64, transient=True)
+    a, b, out1, tmp1, tmp2, tmp3, tmp4 = (state.add_access(name) for name in ["a", "b", "out1", "tmp1", "tmp2", "tmp3", "tmp4"])
     sdfg.add_symbol("horizontal_start", dace.int32)
     sdfg.add_symbol("horizontal_end", dace.int32)
 
@@ -154,6 +156,22 @@ def _make_serial_sdfg_1(
         ndrange={"i": f"0:{N}", "j": "horizontal_start:horizontal_end"},
     )
 
+    small_map_entry, small_map_exit = state.add_map(
+        "small_map",
+        ndrange={"i": "0:4"},
+    )
+
+    task4 = state.add_tasklet(
+        "task4_indepenent",
+        inputs={
+            "__in0",  # <- `b[i, j]`
+        },
+        outputs={
+            "__out0",  # <- `b[i, j]+12`
+        },
+        code="__out0 = __in0 + 3.0",
+    )
+
     # Now assemble everything.
     state.add_edge(mentry, "OUT_b", task1, "__in0", dace.Memlet("b[i, j]"))
     state.add_edge(task1, "__out0", tmp1, None, dace.Memlet("tmp1[0]"))
@@ -164,7 +182,13 @@ def _make_serial_sdfg_1(
 
     state.add_edge(tmp2, None, task3, "__in0", dace.Memlet("tmp2[0]"))
     state.add_edge(mentry, "OUT_a", task3, "__in1", dace.Memlet("a[i, j]"))
-    state.add_edge(task3, "__out0", mexit, "IN_out1", dace.Memlet("out1[i, j]"))
+    state.add_edge(task3, "__out0", tmp3, None, dace.Memlet("tmp3[0]"))
+    state.add_edge(tmp3, None, small_map_entry, "IN_tmp3", dace.Memlet("tmp3[0]"))
+    state.add_edge(small_map_entry, "OUT_tmp3", task4, "__in0", dace.Memlet("tmp3[0]"))
+
+    state.add_edge(task4, "__out0", small_map_exit, "IN_tmp4", dace.Memlet("tmp4[0]"))
+    state.add_edge(small_map_exit, "OUT_tmp4", tmp4, None, dace.Memlet("tmp4[0]"))
+    state.add_edge(tmp4, None, mexit, "IN_out1", dace.Memlet("tmp4[0]"))
 
     state.add_edge(a, None, mentry, "IN_a", sdfg.make_array_memlet("a"))
     state.add_edge(b, None, mentry, "IN_b", sdfg.make_array_memlet("b"))
@@ -174,6 +198,10 @@ def _make_serial_sdfg_1(
         mentry.add_out_connector("OUT_" + name)
     mexit.add_in_connector("IN_out1")
     mexit.add_out_connector("OUT_out1")
+    small_map_entry.add_in_connector("IN_tmp3")
+    small_map_entry.add_out_connector("OUT_tmp3")
+    small_map_exit.add_in_connector("IN_tmp4")
+    small_map_exit.add_out_connector("OUT_tmp4")
 
     tasklet2, map_entry2, map_exit2 = state.add_mapped_tasklet(
         name="second_computation",
