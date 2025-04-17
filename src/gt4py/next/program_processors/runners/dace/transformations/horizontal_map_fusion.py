@@ -220,13 +220,13 @@ class HorizontalMapFusion(dace_transformation.SingleStateTransformation):
                     if isinstance(node_desc, dace.data.Array):
                         new_name, new_data_desc = sdfg.add_array(node_name + f"_{suffix}", node_desc.shape, node_desc.dtype, node_desc.storage,
                                         node_desc.location, node_desc.transient, node_desc.strides,
-                                        node_desc.offset)
+                                        node_desc.offset, find_new_name=True)
                         node_.data = new_name
                         new_data_names[node_name] = new_name
                         new_data_descriptors[node_name] = new_data_desc
                     elif isinstance(node_desc, dace.data.Scalar):
                         new_name, new_data_desc = sdfg.add_scalar(node_name + f"_{suffix}", node_desc.dtype, node_desc.storage, node_desc.transient,
-                                                                node_desc.lifetime, node_desc.debuginfo)
+                                                                node_desc.lifetime, node_desc.debuginfo, find_new_name=True)
                         node_.data = new_name
                         new_data_names[node_name] = new_name
                         new_data_descriptors[node_name] = new_data_desc
