@@ -142,6 +142,10 @@ class HorizontalMapFusion(dace_transformation.SingleStateTransformation):
                             print(f"[can_be_applied] range1[1] type: {type(range1[1])}", flush=True)
                             print(f"[can_be_applied] range2[0] type: {type(range2[0])}", flush=True)
                             print(f"[can_be_applied] range2[1] type: {type(range2[1])}", flush=True)
+                            # TODO(iomaganaris): Need to make sure that 1st range is smaller than 2nd range for multiple dimensions
+                            if range1[0] > range2[0]:
+                                print(f"[can_be_applied] range1 starts before range2 at index {range_index}", flush=True)
+                                continue
                             # if range1 and range2 are str check if they are the same
                             if not (isinstance(range1[0], (Number, int)) and isinstance(range1[1], (Number, int)) and isinstance(range2[0], (Number, int)) and isinstance(range2[1], (Number, int))):
                                 print("[can_be_applied] range1 and range2 are str", flush=True)
@@ -198,6 +202,8 @@ class HorizontalMapFusion(dace_transformation.SingleStateTransformation):
             suffix: str = "copy",
         ) -> tuple[dace_nodes.MapEntry, dace_nodes.MapExit]:            
             new_nodes = {}
+            new_data_names = {}
+            new_data_descriptors = {}
 
             subgraph = graph.scope_subgraph(map_entry, include_entry=True, include_exit=True)
             map_nodes = subgraph.nodes()
@@ -208,7 +214,30 @@ class HorizontalMapFusion(dace_transformation.SingleStateTransformation):
 
             for node in map_nodes:
                 node_ = copy.deepcopy(node)
-                graph.add_node(node_)
+                if isinstance(node, dace_nodes.AccessNode):
+                    node_name = node_.data
+                    node_desc = node_.desc(graph)
+                    if isinstance(node_desc, dace.data.Array):
+                        new_name, new_data_desc = sdfg.add_array(node_name + f"_{suffix}", node_desc.shape, node_desc.dtype, node_desc.storage,
+                                        node_desc.location, node_desc.transient, node_desc.strides,
+                                        node_desc.offset)
+                        node_.data = new_name
+                        new_data_names[node_name] = new_name
+                        new_data_descriptors[node_name] = new_data_desc
+                    elif isinstance(node_desc, dace.data.Scalar):
+                        new_name, new_data_desc = sdfg.add_scalar(node_name + f"_{suffix}", node_desc.dtype, node_desc.storage, node_desc.transient,
+                                                                node_desc.lifetime, node_desc.debuginfo)
+                        node_.data = new_name
+                        new_data_names[node_name] = new_name
+                        new_data_descriptors[node_name] = new_data_desc
+                    else:
+                        raise ValueError(f"Unsupported node type: {type(node_desc)}")
+                else:
+                    # change label to a unique name
+                    if not (isinstance(node, dace_nodes.MapEntry) or isinstance(node, dace_nodes.MapExit)):
+                        # handled later
+                        node_.label = f"{node.label}_{suffix}"
+                    graph.add_node(node_)
                 new_nodes[node] = node_
                 if node == map_entry:
                     # map_entry.map is same as map_exit.map
@@ -221,8 +250,12 @@ class HorizontalMapFusion(dace_transformation.SingleStateTransformation):
 
             for edge in map_edges:
                 print(f"[apply] map_edges edge: {edge}", flush=True)
+                # import pdb; pdb.set_trace()
+                copy_memlet = copy.deepcopy(edge.data)
+                if edge.data.data in new_data_names:
+                    copy_memlet.data = new_data_names[edge.data.data]
                 graph.add_edge(new_nodes[edge.src], edge.src_conn, new_nodes[edge.dst], edge.dst_conn,
-                            copy.deepcopy(edge.data))
+                            copy_memlet)
             
             for i, iedge in enumerate(graph.in_edges(map_entry)):
                 if iedge.data not in [map_entry_copy_edge.data for map_entry_copy_edge in graph.in_edges(map_entry_copy)]:
