@@ -8,14 +8,11 @@
 
 import pytest
 
-
 dace = pytest.importorskip("dace")
-from dace.sdfg import nodes as dace_nodes
 
 from gt4py.next.program_processors.runners.dace import (
     transformations as gtx_transformations,
 )
-
 
 from . import util
 
@@ -65,8 +62,10 @@ def test_vertical_map_fusion():
 
     sdfg.validate()
 
-    sdfg.apply_transformations(
-        gtx_transformations.MapRangeSplitter(),
+    ret = gtx_transformations.gt_vertical_map_fusion(
+        sdfg=sdfg,
+        run_simplify=False,
         validate=True,
         validate_all=True,
     )
+    assert ret == 1

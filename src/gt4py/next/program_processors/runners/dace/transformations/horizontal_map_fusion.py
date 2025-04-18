@@ -206,8 +206,7 @@ class HorizontalMapFusion(dace_transformation.SingleStateTransformation):
                 second_map_entry.map.range[range_index],
             ))
         
-        new_entry_map, _ = map_fusion_utils.copy_full_map(sdfg, graph, first_map_entry, first_map_exit, "overlap")
-        new_entry_map.map.range = dace_subsets.Range(overlapping_ranges)
+        map_fusion_utils.copy_map_graph_with_new_range(sdfg, graph, first_map_entry, first_map_exit, overlapping_ranges, "overlap")
 
         # write a function that finds ranges that are not overlapping. for example range1: 0:10 and range2: 5:15 should be set to 0:5 and 10:15
         def find_non_overlapping_ranges(
@@ -251,8 +250,7 @@ class HorizontalMapFusion(dace_transformation.SingleStateTransformation):
         # Iterate through each combination and create copies of the map
         for combination in range_combinations:
             print(f"[apply] Processing combination: {combination}", flush=True)
-            new_map_entry, _ = map_fusion_utils.copy_full_map(sdfg, graph, first_map_entry, first_map_exit, "copy")
-            new_map_entry.map.range = dace_subsets.Range(combination)
+            map_fusion_utils.copy_map_graph_with_new_range(sdfg, graph, first_map_entry, first_map_exit, combination, "copy")
 
         for node in graph.scope_subgraph(first_map_entry, include_entry=True, include_exit=True).nodes():
             print(f"[apply] first_map_entry node: {node}", flush=True)
