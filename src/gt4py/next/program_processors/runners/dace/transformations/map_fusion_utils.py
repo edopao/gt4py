@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import copy
+import itertools
 
 import dace
 from dace import subsets as dace_subsets
@@ -64,8 +65,11 @@ def copy_map_graph(
             new_data_descriptors[data_name] = new_data_desc
         elif isinstance(node, dace_nodes.NestedSDFG):
             node_ = graph.add_nested_sdfg(
-                node.sdfg, sdfg, node.in_connectors, node.out_connectors, node.symbol_mapping
+                copy.deepcopy(node.sdfg), sdfg, node.in_connectors, node.out_connectors, node.symbol_mapping
             )
+            # ensure the correct reference to parent
+            node_.sdfg.parent_nsdfg_node = node_
+            node_.sdfg.parent = graph
         else:
             node_ = copy.deepcopy(node)
             # change label to a unique name
@@ -146,3 +150,100 @@ def copy_map_graph_with_new_range(
     assert new_map_entry.range == map_range
     assert new_map_exit.map.range == map_range
     return new_map_entry, new_map_exit
+
+
+def split_overlapping_map_range(
+    first_map: dace_nodes.Map,
+    second_map: dace_nodes.Map,
+) -> tuple[list[dace_subsets.Range], list[dace_subsets.Range]] | None:
+    """Identifies the overlapping range of two maps and splits the range accordingly.
+
+    For each map, the splitted range consists of multiple ranges, obtained from
+    the combinatorial product of the splitted range for all map parameters.
+
+    Args:
+        first_map: One map (the order is not relevant).
+        second_map: The other map.
+
+    Returns:
+        Two lists, each containing the ranges corresponding to the splitted range
+        for the first and the second map, respectively.
+    """
+    first_map_params = set(first_map.params)
+    second_map_params = set(second_map.params)
+    common_map_params = second_map_params.intersection(first_map_params)
+    if len(common_map_params) == 0:
+        return None
+
+    try:
+        if first_map.range.intersects(second_map.range) == False:
+            # in case of disjoint ranges, we cannot find an overlapping range
+            return None
+    except TypeError:
+        # cannot determine truth value of Relational
+        return None
+
+    if (first_map.range == second_map.range) == True:  # noqa: E712 [true-false-comparison]  # SymPy fuzzy bools.
+        return None
+
+    first_map_dict = dict(zip(first_map.params, first_map.range.ranges, strict=True))
+    second_map_dict = dict(zip(second_map.params, second_map.range.ranges, strict=True))
+
+    first_map_splitted_dict = {}
+    second_map_splitted_dict = {}
+    for param in common_map_params:
+        first_map_range = first_map_dict[param]
+        second_map_range = second_map_dict[param]
+        if (step := first_map_range[2]) != second_map_range[2]:
+            # we do not support splitting of map range when the range step is different
+            return None
+        elif first_map_range == second_map_range:
+            first_map_splitted_dict[param] = [first_map_range]
+            second_map_splitted_dict[param] = [second_map_range]
+        else:
+            overlap_range_start = max(first_map_range[0], second_map_range[0])
+            overlap_range_stop = min(first_map_range[1], second_map_range[1])
+
+            first_map_splitted_dict[param] = [
+                (overlap_range_start, overlap_range_stop, step),
+            ]
+            if first_map_range[0] < overlap_range_start:
+                first_map_splitted_dict[param].append(
+                    (first_map_range[0], overlap_range_start - step, step)
+                )
+            if overlap_range_stop < first_map_range[1]:
+                first_map_splitted_dict[param].append(
+                    (overlap_range_stop + step, first_map_range[1], step)
+                )
+
+            second_map_splitted_dict[param] = [
+                (overlap_range_start, overlap_range_stop, step),
+            ]
+            if second_map_range[0] < overlap_range_start:
+                second_map_splitted_dict[param].append(
+                    (second_map_range[0], overlap_range_start - step, step)
+                )
+            if overlap_range_stop < second_map_range[1]:
+                second_map_splitted_dict[param].append(
+                    (overlap_range_stop + step, second_map_range[1], step)
+                )
+
+    first_map_combined_ranges = (
+        first_map_splitted_dict[param]
+        if param in common_map_params
+        else
+        [first_map_dict[param]]
+        for param in first_map.params
+    )
+    second_map_combined_ranges = (
+        second_map_splitted_dict[param]
+        if param in common_map_params
+        else
+        [second_map_dict[param]]
+        for param in second_map.params
+    )
+
+    first_map_range_combinations = [dace_subsets.Range(r) for r in itertools.product(*first_map_combined_ranges)]
+    second_map_range_combinations = [dace_subsets.Range(r) for r in itertools.product(*second_map_combined_ranges)]
+
+    return first_map_range_combinations, second_map_range_combinations

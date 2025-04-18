@@ -9,6 +9,7 @@
 import pytest
 
 dace = pytest.importorskip("dace")
+from dace.sdfg import nodes as dace_nodes
 
 from gt4py.next.program_processors.runners.dace import (
     transformations as gtx_transformations,
@@ -61,6 +62,7 @@ def test_vertical_map_fusion():
     st.add_nedge(st.add_access(C), out_node, dace.Memlet(data=C, subset="0", other_subset="0"))
 
     sdfg.validate()
+    assert util.count_nodes(sdfg, dace_nodes.MapEntry) == 2
 
     ret = gtx_transformations.gt_vertical_map_fusion(
         sdfg=sdfg,
@@ -69,3 +71,4 @@ def test_vertical_map_fusion():
         validate_all=True,
     )
     assert ret == 1
+    assert util.count_nodes(sdfg, dace_nodes.MapEntry) == 3
