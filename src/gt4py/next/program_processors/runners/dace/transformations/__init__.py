@@ -14,6 +14,7 @@ that explains the general structure and requirements on the SDFGs.
 
 from .auto_optimize import gt_auto_optimize
 from .dead_dataflow_elimination import gt_eliminate_dead_dataflow
+from .horizontal_map_fusion import gt_horizontal_map_fusion
 from .gpu_utils import (
     GPUSetBlockSize,
     gt_gpu_transform_non_standard_memlet,
@@ -83,6 +84,7 @@ __all__ = [
     "gt_find_constant_arguments",
     "gt_gpu_transform_non_standard_memlet",
     "gt_gpu_transformation",
+    "gt_horizontal_map_fusion",
     "gt_inline_nested_sdfg",
     "gt_make_transients_persistent",
     "gt_map_strides_to_dst_nested_sdfg",

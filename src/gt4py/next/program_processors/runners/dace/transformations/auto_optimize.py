@@ -272,6 +272,15 @@ def _gt_auto_process_top_level_maps(
             validate_all=validate_all,
         )
 
+        # Call horizontal map fusion to fuse together operations that are applied
+        # to the same ranges
+        gtx_transformations.gt_horizontal_map_fusion(
+            sdfg=sdfg,
+            run_simplify=False,
+            validate=validate,
+            validate_all=validate_all,
+        )
+
         # Determine if the SDFG has been modified by comparing the hash.
         old_sdfg_hash, sdfg_hash = sdfg_hash, sdfg.hash_sdfg()
         if old_sdfg_hash == sdfg_hash:
