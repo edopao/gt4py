@@ -20,7 +20,7 @@ from gt4py.next.program_processors.runners.dace import (
 from . import util
 
 
-def test_map_range_splitter():
+def test_vertical_map_fusion():
     N = 80
     sdfg = dace.SDFG(util.unique_name("simple"))
     A, _ = sdfg.add_array("A", [N], dtype=dace.float64)

@@ -6,6 +6,8 @@
 # Please, refer to the LICENSE file in the root directory.
 # SPDX-License-Identifier: BSD-3-Clause
 
+from __future__ import annotations
+
 from typing import Any, Union
 
 import dace
@@ -16,9 +18,35 @@ from dace import (
 )
 from dace.sdfg import nodes as dace_nodes
 
+from gt4py.next.program_processors.runners.dace import transformations as gtx_transformations
+
+def gt_vertical_map_fusion(
+    sdfg: dace.SDFG,
+    run_simplify: bool,
+    validate: bool = True,
+    validate_all: bool = False,
+) -> int:
+    find_single_use_data = dace_transformation.analysis.FindSingleUseData()
+    single_use_data = find_single_use_data.apply_pass(sdfg, None)
+
+    ret = sdfg.apply_transformations_repeated(
+        [MapRangeVerticalSplit(), gtx_transformations.SplitAccessNode(single_use_data=single_use_data), gtx_transformations.MapFusionSerial()],
+        validate=validate,
+        validate_all=validate_all,
+    )
+
+    if run_simplify:
+        gtx_transformations.gt_simplify(
+            sdfg=sdfg,
+            validate=validate,
+            validate_all=validate_all,
+        )
+
+    return ret
+
 
 @dace_properties.make_properties
-class MapRangeSplitter(dace_transformation.SingleStateTransformation):
+class MapRangeVerticalSplit(dace_transformation.SingleStateTransformation):
     """
     Identify overlapping range between serial maps, and split the range in order
     to promote serial map fusion.

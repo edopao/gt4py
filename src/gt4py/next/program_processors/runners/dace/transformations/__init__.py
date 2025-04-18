@@ -26,7 +26,6 @@ from .loop_blocking import LoopBlocking
 from .map_fusion import MapFusion, MapFusionParallel, MapFusionSerial
 from .map_orderer import MapIterationOrder, gt_set_iteration_order
 from .map_promoter import SerialMapPromoter
-from .map_range_splitter import MapRangeSplitter
 from .move_dataflow_into_if_body import MoveDataflowIntoIfBody
 from .redundant_array_removers import (
     CopyChainRemover,
@@ -55,6 +54,7 @@ from .strides import (
     gt_propagate_strides_of,
 )
 from .utils import gt_find_constant_arguments, gt_make_transients_persistent
+from .vertical_map_fusion import gt_vertical_map_fusion
 
 
 __all__ = [
@@ -69,7 +69,6 @@ __all__ = [
     "MapFusionParallel",
     "MapFusionSerial",
     "MapIterationOrder",
-    "MapRangeSplitter",
     "MoveDataflowIntoIfBody",
     "MultiStateGlobalSelfCopyElimination",
     "SerialMapPromoter",
@@ -99,4 +98,5 @@ __all__ = [
     "gt_simplify",
     "gt_split_access_nodes",
     "gt_substitute_compiletime_symbols",
+    "gt_vertical_map_fusion",
 ]

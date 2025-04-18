@@ -256,7 +256,7 @@ def _make_serial_sdfg_1(
 
     return sdfg
 
-def test_vertical_map_fusion():
+def test_horizontal_map_fusion():
     N = 20
     sdfg = _make_serial_sdfg_1(N)
     sdfg.view()
@@ -300,4 +300,4 @@ def test_vertical_map_fusion():
 
 
 if __name__ == "__main__":
-    test_vertical_map_fusion()
+    test_horizontal_map_fusion()

@@ -6,20 +6,25 @@
 # Please, refer to the LICENSE file in the root directory.
 # SPDX-License-Identifier: BSD-3-Clause
 
-import copy
+from __future__ import annotations
 
 from typing import Any, Mapping, Optional
 
 import dace
-from dace import properties as dace_properties, transformation as dace_transformation
+from dace import (
+    properties as dace_properties,
+    subsets as dace_subsets,
+    transformation as dace_transformation,
+)
 from dace.sdfg import nodes as dace_nodes, graph
-from dace.transformation.passes import analysis as dace_analysis
 from dace.sdfg.propagation import propagate_memlets_state
 
 from gt4py.next.program_processors.runners.dace import transformations as gtx_transformations
 from itertools import product
 
 from sympy.core.numbers import Number
+
+from gt4py.next.program_processors.runners.dace.transformations import map_fusion_utils
 
 def gt_horizontal_map_fusion(
     sdfg: dace.SDFG,
@@ -194,85 +199,6 @@ class HorizontalMapFusion(dace_transformation.SingleStateTransformation):
         second_map_entry: dace_nodes.MapEntry = self.second_map_entry
         second_map_exit: dace_nodes.MapExit = graph.exit_node(second_map_entry)
 
-        def copy_full_map(
-            graph: dace.SDFGState,
-            map_entry: dace_nodes.MapEntry,
-            map_exit: dace_nodes.MapExit,
-            new_ranges: list[dace.subsets.Range],
-            suffix: str = "copy",
-        ) -> tuple[dace_nodes.MapEntry, dace_nodes.MapExit]:            
-            new_nodes = {}
-            new_data_names = {}
-            new_data_descriptors = {}
-
-            subgraph = graph.scope_subgraph(map_entry, include_entry=True, include_exit=True)
-            map_nodes = subgraph.nodes()
-            map_edges = subgraph.edges()
-
-            map_entry_copy = None
-            map_exit_copy = None
-
-            for node in map_nodes:
-                node_ = copy.deepcopy(node)
-                if isinstance(node, dace_nodes.AccessNode):
-                    node_name = node_.data
-                    node_desc = node_.desc(graph)
-                    if isinstance(node_desc, dace.data.Array):
-                        new_name, new_data_desc = sdfg.add_array(node_name + f"_{suffix}", node_desc.shape, node_desc.dtype, node_desc.storage,
-                                        node_desc.location, node_desc.transient, node_desc.strides,
-                                        node_desc.offset, find_new_name=True)
-                        node_.data = new_name
-                        new_data_names[node_name] = new_name
-                        new_data_descriptors[node_name] = new_data_desc
-                    elif isinstance(node_desc, dace.data.Scalar):
-                        new_name, new_data_desc = sdfg.add_scalar(node_name + f"_{suffix}", node_desc.dtype, node_desc.storage, node_desc.transient,
-                                                                node_desc.lifetime, node_desc.debuginfo, find_new_name=True)
-                        node_.data = new_name
-                        new_data_names[node_name] = new_name
-                        new_data_descriptors[node_name] = new_data_desc
-                    else:
-                        raise ValueError(f"Unsupported node type: {type(node_desc)}")
-                elif isinstance(node, dace_nodes.NestedSDFG):
-                    raise NotImplementedError("Nested SDFGs are not supported yet")
-                else:
-                    # change label to a unique name
-                    if not (isinstance(node, dace_nodes.MapEntry) or isinstance(node, dace_nodes.MapExit)):
-                        # handled later
-                        node_.label = f"{node.label}_{suffix}"
-                    else:
-                        node_.map.label = f"{node.label}_{suffix}"
-                    graph.add_node(node_)
-                new_nodes[node] = node_
-                if node == map_entry:
-                    # map_entry.map is same as map_exit.map
-                    for range_index in range(len(map_entry.map.range)):
-                        node_.map.range[range_index] = new_ranges[range_index]
-                    map_entry_copy = node_
-                elif node == map_exit:
-                    map_exit_copy = node_
-
-            for edge in map_edges:
-                print(f"[apply] map_edges edge: {edge}", flush=True)
-                # import pdb; pdb.set_trace()
-                copy_memlet = copy.deepcopy(edge.data)
-                if edge.data.data in new_data_names:
-                    copy_memlet.data = new_data_names[edge.data.data]
-                graph.add_edge(new_nodes[edge.src], edge.src_conn, new_nodes[edge.dst], edge.dst_conn,
-                            copy_memlet)
-            
-            for i, iedge in enumerate(graph.in_edges(map_entry)):
-                if iedge.data not in [map_entry_copy_edge.data for map_entry_copy_edge in graph.in_edges(map_entry_copy)]:
-                    print(f"[apply] copy map_entry iedge {i}: {iedge}", flush=True)
-                    copy_memlet = copy.deepcopy(iedge.data)
-                    graph.add_edge(iedge.src, iedge.src_conn, map_entry_copy, iedge.dst_conn, copy_memlet)
-
-            for i, oedge in enumerate(graph.out_edges(map_exit)):
-                print(f"[apply] copy map_exit oedge {i}: {oedge}", flush=True)
-                copy_memlet = copy.deepcopy(oedge.data)
-                graph.add_edge(map_exit_copy, oedge.src_conn, oedge.dst, oedge.dst_conn, copy_memlet)
-
-            return map_entry_copy, map_exit_copy
-
         overlapping_ranges = []
         for range_index in range(len(first_map_entry.map.range)):
             overlapping_ranges.append(self.find_overlapping_range(
@@ -280,7 +206,8 @@ class HorizontalMapFusion(dace_transformation.SingleStateTransformation):
                 second_map_entry.map.range[range_index],
             ))
         
-        copy_full_map(graph, first_map_entry, first_map_exit, overlapping_ranges, "overlap")
+        new_entry_map, _ = map_fusion_utils.copy_full_map(sdfg, graph, first_map_entry, first_map_exit, "overlap")
+        new_entry_map.map.range = dace_subsets.Range(overlapping_ranges)
 
         # write a function that finds ranges that are not overlapping. for example range1: 0:10 and range2: 5:15 should be set to 0:5 and 10:15
         def find_non_overlapping_ranges(
@@ -324,7 +251,8 @@ class HorizontalMapFusion(dace_transformation.SingleStateTransformation):
         # Iterate through each combination and create copies of the map
         for combination in range_combinations:
             print(f"[apply] Processing combination: {combination}", flush=True)
-            copy_full_map(graph, first_map_entry, first_map_exit, list(combination), "copy")
+            new_map_entry, _ = map_fusion_utils.copy_full_map(sdfg, graph, first_map_entry, first_map_exit, "copy")
+            new_map_entry.map.range = dace_subsets.Range(combination)
 
         for node in graph.scope_subgraph(first_map_entry, include_entry=True, include_exit=True).nodes():
             print(f"[apply] first_map_entry node: {node}", flush=True)
