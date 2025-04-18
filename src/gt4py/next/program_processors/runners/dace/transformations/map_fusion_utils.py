@@ -65,7 +65,11 @@ def copy_map_graph(
             new_data_descriptors[data_name] = new_data_desc
         elif isinstance(node, dace_nodes.NestedSDFG):
             node_ = graph.add_nested_sdfg(
-                copy.deepcopy(node.sdfg), sdfg, node.in_connectors, node.out_connectors, node.symbol_mapping
+                copy.deepcopy(node.sdfg),
+                sdfg,
+                node.in_connectors,
+                node.out_connectors,
+                node.symbol_mapping,
             )
             # ensure the correct reference to parent
             node_.sdfg.parent_nsdfg_node = node_
@@ -86,6 +90,8 @@ def copy_map_graph(
             new_map_exit = node_
 
     # we have to ensure that the exit node references the new map node
+    assert new_map_entry is not None
+    assert new_map_exit is not None
     new_map_exit.map = new_map_entry.map
 
     for edge in map_edges:
@@ -107,18 +113,18 @@ def copy_map_graph(
     return new_map_entry, new_map_exit
 
 
-def update_map_range(map: dace_nodes.Map, new_range: dace_subsets.Range) -> None:
+def update_map_range(map_node: dace_nodes.Map, new_range: dace_subsets.Range) -> None:
     """Helper function to modify the range of a map.
 
     In a map graph the range is referenced in multiple nodes: the map entry,
     the exit node and the map itself. Therefore, we update the content of the list.
 
     Args:
-        map: The map to modify.
+        map_node: The map to modify.
         new_range: The range to set on the map.
     """
     for i, r in enumerate(new_range):
-        map.range[i] = r
+        map_node.range[i] = r
 
 
 def copy_map_graph_with_new_range(
@@ -176,7 +182,7 @@ def split_overlapping_map_range(
         return None
 
     try:
-        if first_map.range.intersects(second_map.range) == False:
+        if first_map.range.intersects(second_map.range) == False:  # noqa: E712 [true-false-comparison]  # SymPy fuzzy bools.
             # in case of disjoint ranges, we cannot find an overlapping range
             return None
     except TypeError:
@@ -229,21 +235,19 @@ def split_overlapping_map_range(
                 )
 
     first_map_combined_ranges = (
-        first_map_splitted_dict[param]
-        if param in common_map_params
-        else
-        [first_map_dict[param]]
+        first_map_splitted_dict[param] if param in common_map_params else [first_map_dict[param]]
         for param in first_map.params
     )
     second_map_combined_ranges = (
-        second_map_splitted_dict[param]
-        if param in common_map_params
-        else
-        [second_map_dict[param]]
+        second_map_splitted_dict[param] if param in common_map_params else [second_map_dict[param]]
         for param in second_map.params
     )
 
-    first_map_range_combinations = [dace_subsets.Range(r) for r in itertools.product(*first_map_combined_ranges)]
-    second_map_range_combinations = [dace_subsets.Range(r) for r in itertools.product(*second_map_combined_ranges)]
+    first_map_range_combinations = [
+        dace_subsets.Range(r) for r in itertools.product(*first_map_combined_ranges)
+    ]
+    second_map_range_combinations = [
+        dace_subsets.Range(r) for r in itertools.product(*second_map_combined_ranges)
+    ]
 
     return first_map_range_combinations, second_map_range_combinations

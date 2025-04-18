@@ -11,11 +11,7 @@ from __future__ import annotations
 from typing import Any, Union
 
 import dace
-from dace import (
-    properties as dace_properties,
-    subsets as dace_subsets,
-    transformation as dace_transformation,
-)
+from dace import properties as dace_properties, transformation as dace_transformation
 from dace.sdfg import nodes as dace_nodes, propagation as dace_propagation
 from dace.transformation.passes import analysis as dace_analysis
 
@@ -35,7 +31,6 @@ def gt_vertical_map_fusion(
     ret = sdfg.apply_transformations_repeated(
         [
             MapRangeVerticalSplit(),
-            gtx_transformations.SplitMemlet(),
             gtx_transformations.SplitAccessNode(single_use_data=single_use_data),
             gtx_transformations.MapFusionSerial(),
         ],
@@ -100,7 +95,9 @@ class MapRangeVerticalSplit(dace_transformation.SingleStateTransformation):
 
     def apply(self, graph: Union[dace.SDFGState, dace.SDFG], sdfg: dace.SDFG) -> None:
         """Split the map range in order to obtain an overlapping range between the first and second map."""
-        splitted_range = map_fusion_utils.split_overlapping_map_range(self.exit_first_map.map, self.entry_second_map.map)
+        splitted_range = map_fusion_utils.split_overlapping_map_range(
+            self.exit_first_map.map, self.entry_second_map.map
+        )
         assert splitted_range is not None
 
         first_map_entry: dace_nodes.MapEntry = graph.entry_node(self.exit_first_map)
@@ -117,7 +114,9 @@ class MapRangeVerticalSplit(dace_transformation.SingleStateTransformation):
             )
 
         # remove the original first map
-        for node in graph.scope_subgraph(first_map_entry, include_entry=True, include_exit=True).nodes():
+        for node in graph.scope_subgraph(
+            first_map_entry, include_entry=True, include_exit=True
+        ).nodes():
             graph.remove_node(node)
 
         # make copies of the second map with splitted ranges
@@ -127,7 +126,9 @@ class MapRangeVerticalSplit(dace_transformation.SingleStateTransformation):
             )
 
         # remove the original second map
-        for node in graph.scope_subgraph(second_map_entry, include_entry=True, include_exit=True).nodes():
+        for node in graph.scope_subgraph(
+            second_map_entry, include_entry=True, include_exit=True
+        ).nodes():
             graph.remove_node(node)
 
         dace_propagation.propagate_memlets_state(sdfg, graph)
