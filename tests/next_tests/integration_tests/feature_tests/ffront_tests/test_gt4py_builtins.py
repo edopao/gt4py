@@ -151,9 +151,9 @@ def test_reduction_execution_with_offset(unstructured_case_3d):
     def fencil(edge_f: EKField, out: VKField):
         fencil_op(edge_f, out=out)
 
-    v2e_table = unstructured_case.offset_provider["V2E"].asnumpy()
-    field = cases.allocate(unstructured_case, fencil, "edge_f", sizes={KDim: 2})()
-    out = cases.allocate(unstructured_case, fencil_op, cases.RETURN, sizes={KDim: 1})()
+    v2e_table = unstructured_case_3d.offset_provider["V2E"].asnumpy()
+    field = cases.allocate(unstructured_case_3d, fencil, "edge_f", sizes={KDim: 2})()
+    out = cases.allocate(unstructured_case_3d, fencil_op, cases.RETURN, sizes={KDim: 1})()
 
     cases.verify(
         unstructured_case_3d,
