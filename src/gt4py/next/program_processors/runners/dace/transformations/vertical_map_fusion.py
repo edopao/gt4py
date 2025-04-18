@@ -131,3 +131,6 @@ class MapRangeVerticalSplit(dace_transformation.SingleStateTransformation):
             graph.remove_node(node)
 
         dace_propagation.propagate_memlets_state(sdfg, graph)
+
+        # workaround to refresh `cfg_list` on the SDFG
+        sdfg.hash_sdfg()
