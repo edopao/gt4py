@@ -165,7 +165,7 @@ def _parse_gt_param(
                     else:
                         # the array shape is set to constant value
                         code.append(
-                            f"assert {_cb_sdfg_argtypes}[{sdfg_arg_index}].shape[i] == {arg}.ndarray.shape[i]"
+                            f"assert {_cb_sdfg_argtypes}[{sdfg_arg_index}].shape[{i}] == {arg}.ndarray.shape[{i}]"
                         )
                 for i, array_stride in enumerate(sdfg_arg_desc.strides):
                     if (
@@ -187,7 +187,7 @@ def _parse_gt_param(
                     else:
                         # the array stride is set to constant value
                         code.append(
-                            f"assert {_cb_sdfg_argtypes}[{sdfg_arg_index}].strides[i] == stride"
+                            f"assert {_cb_sdfg_argtypes}[{sdfg_arg_index}].strides[{i}] == stride"
                         )
 
         elif isinstance(param_type, ts.ScalarType):
