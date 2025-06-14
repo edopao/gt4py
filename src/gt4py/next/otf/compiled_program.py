@@ -24,7 +24,7 @@ from gt4py.next.type_system import type_info, type_specifications as ts, type_tr
 
 
 # TODO(havogt): We would like this to be a ProcessPoolExecutor, which requires (to decide what) to pickle.
-_async_compilation_pool = concurrent.futures.ThreadPoolExecutor(max_workers=config.BUILD_JOBS)
+_async_compilation_pool = concurrent.futures.ThreadPoolExecutor(max_workers=config.BUILD_JOBS) if config.BUILD_JOBS > 1 else None
 
 ScalarOrTupleOfScalars: TypeAlias = extended_typing.MaybeNestedInTuple[core_defs.Scalar]
 CompiledProgramsKey: TypeAlias = tuple[
@@ -214,9 +214,14 @@ class CompiledProgramsPool:
             args=args,
             kwargs={},
         )
-        self._compiled_programs[key] = _async_compilation_pool.submit(
-            self.backend.compile, self.definition_stage, compile_time_args=compile_time_args
-        )
+        if _async_compilation_pool is None:
+            self._compiled_programs[key] = self.backend.compile(
+                self.definition_stage, compile_time_args=compile_time_args
+            )
+        else:
+            self._compiled_programs[key] = _async_compilation_pool.submit(
+                self.backend.compile, self.definition_stage, compile_time_args=compile_time_args
+            )
 
     def _offset_provider_to_type_unsafe(
         self,
