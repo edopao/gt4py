@@ -13,12 +13,20 @@ from typing import Any, Optional
 
 import dace
 
+import nvtx
+
 from gt4py._core import definitions as core_defs
 from gt4py.next import common as gtx_common, field_utils
 
 from . import utils as gtx_dace_utils
 
 
+# nvtx traces
+MODULE_COLOR = "orange"
+GT4PY_LABEL = "gt4py"
+
+
+@nvtx.annotate(color=MODULE_COLOR, category=GT4PY_LABEL, message="get_field_domain_symbols")
 def get_field_domain_symbols(name: str, domain: gtx_common.Domain) -> dict[str, int]:
     assert gtx_common.Domain.is_finite(domain)
     return {
@@ -26,6 +34,7 @@ def get_field_domain_symbols(name: str, domain: gtx_common.Domain) -> dict[str, 
     } | {gtx_dace_utils.range_stop_symbol(name, i): r.stop for i, r in enumerate(domain.ranges)}
 
 
+@nvtx.annotate(color=MODULE_COLOR, category=GT4PY_LABEL, message="get_array_shape_symbols")
 def get_array_shape_symbols(
     array_desc: dace.data.Array, ndarray: core_defs.NDArrayObject
 ) -> dict[str, int]:
@@ -39,6 +48,7 @@ def get_array_shape_symbols(
     return array_symbols
 
 
+@nvtx.annotate(color=MODULE_COLOR, category=GT4PY_LABEL, message="get_array_stride_symbols")
 def get_array_stride_symbols(
     array_desc: dace.data.Array, ndarray: core_defs.NDArrayObject
 ) -> dict[str, int]:
@@ -82,6 +92,7 @@ def _get_args(sdfg: dace.SDFG, args: Sequence[Any]) -> dict[str, Any]:
     return call_args | range_symbols | stride_symbols
 
 
+@nvtx.annotate(color=MODULE_COLOR, category=GT4PY_LABEL, message="get_sdfg_conn_args")
 def get_sdfg_conn_args(
     sdfg: dace.SDFG,
     offset_provider: gtx_common.OffsetProvider,
@@ -106,6 +117,7 @@ def get_sdfg_conn_args(
     return connectivity_args
 
 
+@nvtx.annotate(color=MODULE_COLOR, category=GT4PY_LABEL, message="get_sdfg_args")
 def get_sdfg_args(
     sdfg: dace.SDFG,
     offset_provider: gtx_common.OffsetProvider,

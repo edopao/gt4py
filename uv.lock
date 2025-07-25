@@ -850,7 +850,6 @@ resolution-markers = [
 dependencies = [
     { name = "aenum" },
     { name = "astunparse" },
-    { name = "cmake" },
     { name = "dill" },
     { name = "fparser" },
     { name = "networkx" },
@@ -859,7 +858,6 @@ dependencies = [
     { name = "ply" },
     { name = "pyreadline", marker = "sys_platform == 'win32' or (extra == 'extra-5-gt4py-cuda11' and extra == 'extra-5-gt4py-jax-cuda12') or (extra == 'extra-5-gt4py-cuda11' and extra == 'extra-5-gt4py-rocm4-3') or (extra == 'extra-5-gt4py-cuda11' and extra == 'extra-5-gt4py-rocm5-0') or (extra == 'extra-5-gt4py-cuda11' and extra == 'extra-5-gt4py-rocm6-0') or (extra == 'extra-5-gt4py-jax-cuda12' and extra == 'extra-5-gt4py-rocm4-3') or (extra == 'extra-5-gt4py-jax-cuda12' and extra == 'extra-5-gt4py-rocm5-0') or (extra == 'extra-5-gt4py-jax-cuda12' and extra == 'extra-5-gt4py-rocm6-0') or (extra == 'extra-5-gt4py-rocm4-3' and extra == 'extra-5-gt4py-rocm5-0') or (extra == 'extra-5-gt4py-rocm4-3' and extra == 'extra-5-gt4py-rocm6-0') or (extra == 'extra-5-gt4py-rocm5-0' and extra == 'extra-5-gt4py-rocm6-0')" },
     { name = "pyyaml" },
-    { name = "scikit-build" },
     { name = "sympy" },
 ]
 
@@ -876,7 +874,6 @@ resolution-markers = [
 dependencies = [
     { name = "aenum" },
     { name = "astunparse" },
-    { name = "cmake" },
     { name = "dill" },
     { name = "fparser" },
     { name = "networkx" },
@@ -885,7 +882,6 @@ dependencies = [
     { name = "ply" },
     { name = "pyreadline", marker = "sys_platform == 'win32' or (extra == 'extra-5-gt4py-cuda11' and extra == 'extra-5-gt4py-jax-cuda12') or (extra == 'extra-5-gt4py-cuda11' and extra == 'extra-5-gt4py-rocm4-3') or (extra == 'extra-5-gt4py-cuda11' and extra == 'extra-5-gt4py-rocm5-0') or (extra == 'extra-5-gt4py-cuda11' and extra == 'extra-5-gt4py-rocm6-0') or (extra == 'extra-5-gt4py-jax-cuda12' and extra == 'extra-5-gt4py-rocm4-3') or (extra == 'extra-5-gt4py-jax-cuda12' and extra == 'extra-5-gt4py-rocm5-0') or (extra == 'extra-5-gt4py-jax-cuda12' and extra == 'extra-5-gt4py-rocm6-0') or (extra == 'extra-5-gt4py-rocm4-3' and extra == 'extra-5-gt4py-rocm5-0') or (extra == 'extra-5-gt4py-rocm4-3' and extra == 'extra-5-gt4py-rocm6-0') or (extra == 'extra-5-gt4py-rocm5-0' and extra == 'extra-5-gt4py-rocm6-0')" },
     { name = "pyyaml" },
-    { name = "scikit-build" },
     { name = "sympy" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/53/02/1a2ece00b229710a4db8f301bba6097eacfbc2a9af84d8746089242d1cf5/dace-1.0.2.tar.gz", hash = "sha256:6728f4bcf584b9f5bbb9c9a393fbdd87364af0c6ad9120da0302b8b470f4f71c", size = 5801789, upload-time = "2025-03-20T15:17:14.034Z" }
@@ -1001,15 +997,6 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/0d/dd/1bec4c5ddb504ca60fc29472f3d27e8d4da1257a854e1d96742f15c1d02d/distlib-0.3.9.tar.gz", hash = "sha256:a60f20dea646b8a33f3e7772f74dc0b2d0772d2837ee1342a00645c81edf9403", size = 613923, upload-time = "2024-10-09T18:35:47.551Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/91/a1/cf2472db20f7ce4a6be1253a81cfdf85ad9c7885ffbed7047fb72c24cf87/distlib-0.3.9-py2.py3-none-any.whl", hash = "sha256:47f8c22fd27c27e25a65601af709b38e4f0a45ea4fc2e710f65755fa8caaaf87", size = 468973, upload-time = "2024-10-09T18:35:44.272Z" },
-]
-
-[[package]]
-name = "distro"
-version = "1.9.0"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/fc/f8/98eea607f65de6527f8a2e8885fc8015d3e6f5775df186e443e0964a11c3/distro-1.9.0.tar.gz", hash = "sha256:2fa77c6fd8940f116ee1d6b94a2f90b13b5ea8d019b98bc8bafdcabcdd9bdbed", size = 60722, upload-time = "2023-12-24T09:54:32.31Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/12/b3/231ffd4ab1fc9d679809f356cebee130ac7daa00d6d6f3206dd4fd137e9e/distro-1.9.0-py3-none-any.whl", hash = "sha256:7bffd925d65168f85027d8da9af6bddab658135b840670a223589bc0c8ef02b2", size = 20277, upload-time = "2023-12-24T09:54:30.421Z" },
 ]
 
 [[package]]
@@ -1284,6 +1271,7 @@ dependencies = [
     { name = "ninja" },
     { name = "numpy", version = "1.26.4", source = { registry = "https://pypi.org/simple" }, marker = "(extra == 'extra-5-gt4py-cuda11' and extra == 'extra-5-gt4py-jax-cuda12') or (extra == 'extra-5-gt4py-cuda11' and extra == 'extra-5-gt4py-rocm4-3') or (extra == 'extra-5-gt4py-cuda11' and extra == 'extra-5-gt4py-rocm5-0') or (extra == 'extra-5-gt4py-cuda11' and extra == 'extra-5-gt4py-rocm6-0') or (extra == 'extra-5-gt4py-jax-cuda12' and extra == 'extra-5-gt4py-rocm4-3') or (extra == 'extra-5-gt4py-jax-cuda12' and extra == 'extra-5-gt4py-rocm5-0') or (extra == 'extra-5-gt4py-jax-cuda12' and extra == 'extra-5-gt4py-rocm6-0') or (extra == 'extra-5-gt4py-rocm4-3' and extra == 'extra-5-gt4py-rocm5-0') or (extra == 'extra-5-gt4py-rocm4-3' and extra == 'extra-5-gt4py-rocm6-0') or (extra == 'extra-5-gt4py-rocm5-0' and extra == 'extra-5-gt4py-rocm6-0') or (extra != 'extra-5-gt4py-rocm6-0' and extra == 'group-5-gt4py-dace-cartesian') or (extra != 'extra-5-gt4py-cuda11' and extra != 'extra-5-gt4py-jax-cuda12' and extra != 'extra-5-gt4py-rocm4-3' and extra != 'extra-5-gt4py-rocm5-0' and extra == 'group-5-gt4py-dace-cartesian')" },
     { name = "numpy", version = "2.2.2", source = { registry = "https://pypi.org/simple" }, marker = "(extra == 'extra-5-gt4py-cuda11' and extra == 'extra-5-gt4py-jax-cuda12') or (extra == 'extra-5-gt4py-cuda11' and extra == 'extra-5-gt4py-rocm4-3') or (extra == 'extra-5-gt4py-cuda11' and extra == 'extra-5-gt4py-rocm5-0') or (extra == 'extra-5-gt4py-cuda11' and extra == 'extra-5-gt4py-rocm6-0') or (extra == 'extra-5-gt4py-jax-cuda12' and extra == 'extra-5-gt4py-rocm4-3') or (extra == 'extra-5-gt4py-jax-cuda12' and extra == 'extra-5-gt4py-rocm5-0') or (extra == 'extra-5-gt4py-jax-cuda12' and extra == 'extra-5-gt4py-rocm6-0') or (extra == 'extra-5-gt4py-rocm4-3' and extra == 'extra-5-gt4py-rocm5-0') or (extra == 'extra-5-gt4py-rocm4-3' and extra == 'extra-5-gt4py-rocm6-0') or (extra == 'extra-5-gt4py-rocm5-0' and extra == 'extra-5-gt4py-rocm6-0') or (extra != 'extra-5-gt4py-rocm6-0' and extra != 'group-5-gt4py-dace-cartesian') or (extra != 'extra-5-gt4py-rocm6-0' and extra == 'group-5-gt4py-dace-cartesian' and extra == 'group-5-gt4py-dace-next') or (extra != 'extra-5-gt4py-cuda11' and extra != 'extra-5-gt4py-jax-cuda12' and extra != 'extra-5-gt4py-rocm4-3' and extra != 'extra-5-gt4py-rocm5-0' and extra == 'group-5-gt4py-dace-next') or (extra != 'extra-5-gt4py-cuda11' and extra != 'extra-5-gt4py-jax-cuda12' and extra != 'extra-5-gt4py-rocm4-3' and extra != 'extra-5-gt4py-rocm5-0' and extra != 'group-5-gt4py-dace-cartesian')" },
+    { name = "nvtx" },
     { name = "packaging" },
     { name = "pybind11" },
     { name = "setuptools" },
@@ -1470,6 +1458,7 @@ requires-dist = [
     { name = "nanobind", specifier = ">=1.4.0" },
     { name = "ninja", specifier = ">=1.10" },
     { name = "numpy", specifier = ">=1.26.4" },
+    { name = "nvtx", specifier = "==0.2.11" },
     { name = "packaging", specifier = ">=20.0" },
     { name = "pybind11", specifier = ">=2.10.1" },
     { name = "pytest", marker = "extra == 'testing'", specifier = ">=7.0" },
@@ -2589,6 +2578,26 @@ wheels = [
 ]
 
 [[package]]
+name = "nvtx"
+version = "0.2.11"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/c0/ef/173a5dc1bf8f6f7054f89986ab32140ec238c9fcc4f061d221b8e5b87e31/nvtx-0.2.11.tar.gz", hash = "sha256:88d52cf424a0e68b1c05a6b1983fdfa1b35575f983aadc3118cee578491b043e", size = 71671, upload-time = "2025-02-21T07:45:08.053Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/30/47/97b435e425186b5d9b44aec24646af0df9149634544100171776e427abe0/nvtx-0.2.11-cp310-cp310-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:d843978a3f25d15ea2bd6dd7a741a7ee717d07e759dc8fb679d0a9cdeff79bef", size = 470207, upload-time = "2025-02-21T07:13:10.209Z" },
+    { url = "https://files.pythonhosted.org/packages/a8/92/300e0f76a2f3b4ded154b0204a15f7ca9ea3842a0dae90ed1dd8ca1f5350/nvtx-0.2.11-cp310-cp310-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:c1b68d2e91a828eef4b28931131e8bf15e6fb8fd9ce07279e4acf57e03e40a55", size = 474662, upload-time = "2025-02-21T07:15:46.197Z" },
+    { url = "https://files.pythonhosted.org/packages/7e/2e/450da811b9bcbd5d01d9e94cdb5831fb0147436cbbc9312d763b826ec3a6/nvtx-0.2.11-cp310-cp310-win_amd64.whl", hash = "sha256:2c63d6d063b166af26d3f6d3573a9eb4dd868edc7427318f08f648d67674bee3", size = 88982, upload-time = "2025-02-21T07:07:32.767Z" },
+    { url = "https://files.pythonhosted.org/packages/88/13/3dabc92583d2dd124588925d269e9ae25451280543a52c33c1058afe1fb5/nvtx-0.2.11-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:182b5a44d9f2fcdc23d5fb06836e3ea36f612c67114ab6b6f78d751d9852c444", size = 525917, upload-time = "2025-02-21T07:10:49.316Z" },
+    { url = "https://files.pythonhosted.org/packages/88/09/d9d84bd8ea4ef75e039aa998dbf24985e314b6e52d5af8ab3b8e02d612e5/nvtx-0.2.11-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:fc940027d5d61830d0fe90f3ab01b8baf73a5931e5c2757e0eac10bd42195d72", size = 527904, upload-time = "2025-02-21T07:14:14.335Z" },
+    { url = "https://files.pythonhosted.org/packages/de/93/60448e0fedf9b48ba63f475ca84e16418bb931ebc06df592d4c67740ff5f/nvtx-0.2.11-cp311-cp311-win_amd64.whl", hash = "sha256:d9d740c3d31c8ce07f252af695fae05cf870c816aaab54b335e14221a9fb947b", size = 89448, upload-time = "2025-02-21T07:06:41.323Z" },
+    { url = "https://files.pythonhosted.org/packages/80/43/a96ed8aa60b8fc0b376db1cd73012208906dc04028fc3142a5186ee7f6b8/nvtx-0.2.11-cp312-cp312-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:01835a894ef232575359918bb55b98821cc24cb867ca700006fb89db383114c6", size = 559333, upload-time = "2025-02-21T07:09:12.082Z" },
+    { url = "https://files.pythonhosted.org/packages/52/fe/9572c52876fc919de23c244451e71faffb753e5adddb70caad502956a435/nvtx-0.2.11-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:41fdebc5a55448c1a165e3b283b4cc64ad37882f199b5f22119370aec917bd38", size = 562598, upload-time = "2025-02-21T07:13:41.784Z" },
+    { url = "https://files.pythonhosted.org/packages/e5/89/529a5426ce530ccbbc973ee6953758a56dd28ba20817d030471e8542dd6c/nvtx-0.2.11-cp312-cp312-win_amd64.whl", hash = "sha256:1bca6f1695101fc2b2eec39677c650db78bf54c2e3c965a4a5a046701d51b0a6", size = 88780, upload-time = "2025-02-21T07:07:55.311Z" },
+    { url = "https://files.pythonhosted.org/packages/8c/7c/6b72b9925aded900e7ab9d298eb1428ad7db383c1883927b88edbec51d41/nvtx-0.2.11-cp313-cp313-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:93717700c6bff8b220224232d5ae1c4483f911f542dda2b9efaaa46cb325d97a", size = 535167, upload-time = "2025-02-21T07:10:02.301Z" },
+    { url = "https://files.pythonhosted.org/packages/bf/bf/9fc7e7cb379bcb2c141865c82d279cb1c2a139c4a83d2122bee4e053f9ef/nvtx-0.2.11-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:7f51649a377a4c105d731322816872f75fed6cafff6e627e43033e76e6241f19", size = 538457, upload-time = "2025-02-21T07:14:51.674Z" },
+    { url = "https://files.pythonhosted.org/packages/05/6b/36b2a1fc7e7140d5fdc0a8c8698e00d3389fdfc352199e925b2974596f1b/nvtx-0.2.11-cp313-cp313-win_amd64.whl", hash = "sha256:b5eb454a123ac0a58defc7434daaff54d7f22b031c50f5ce028aadf38ebd40b2", size = 86910, upload-time = "2025-02-21T07:06:08.671Z" },
+]
+
+[[package]]
 name = "opt-einsum"
 version = "3.4.0"
 source = { registry = "https://pypi.org/simple" }
@@ -3408,22 +3417,6 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/e0/51/1432afcc3b7aa6586c480142caae5323d59750925c3559688f2a9867343f/ruff-0.9.5-py3-none-win32.whl", hash = "sha256:134f958d52aa6fdec3b294b8ebe2320a950d10c041473c4316d2e7d7c2544723", size = 9853682, upload-time = "2025-02-06T19:47:05.576Z" },
     { url = "https://files.pythonhosted.org/packages/b7/ad/c7a900591bd152bb47fc4882a27654ea55c7973e6d5d6396298ad3fd6638/ruff-0.9.5-py3-none-win_amd64.whl", hash = "sha256:78cc6067f6d80b6745b67498fb84e87d32c6fc34992b52bffefbdae3442967d6", size = 10865744, upload-time = "2025-02-06T19:47:09.205Z" },
     { url = "https://files.pythonhosted.org/packages/75/d9/fde7610abd53c0c76b6af72fc679cb377b27c617ba704e25da834e0a0608/ruff-0.9.5-py3-none-win_arm64.whl", hash = "sha256:18a29f1a005bddb229e580795627d297dfa99f16b30c7039e73278cf6b5f9fa9", size = 10064595, upload-time = "2025-02-06T19:47:12.071Z" },
-]
-
-[[package]]
-name = "scikit-build"
-version = "0.18.1"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "distro" },
-    { name = "packaging" },
-    { name = "setuptools" },
-    { name = "tomli", marker = "python_full_version < '3.11' or (extra == 'extra-5-gt4py-cuda11' and extra == 'extra-5-gt4py-jax-cuda12') or (extra == 'extra-5-gt4py-cuda11' and extra == 'extra-5-gt4py-rocm4-3') or (extra == 'extra-5-gt4py-cuda11' and extra == 'extra-5-gt4py-rocm5-0') or (extra == 'extra-5-gt4py-cuda11' and extra == 'extra-5-gt4py-rocm6-0') or (extra == 'extra-5-gt4py-jax-cuda12' and extra == 'extra-5-gt4py-rocm4-3') or (extra == 'extra-5-gt4py-jax-cuda12' and extra == 'extra-5-gt4py-rocm5-0') or (extra == 'extra-5-gt4py-jax-cuda12' and extra == 'extra-5-gt4py-rocm6-0') or (extra == 'extra-5-gt4py-rocm4-3' and extra == 'extra-5-gt4py-rocm5-0') or (extra == 'extra-5-gt4py-rocm4-3' and extra == 'extra-5-gt4py-rocm6-0') or (extra == 'extra-5-gt4py-rocm5-0' and extra == 'extra-5-gt4py-rocm6-0')" },
-    { name = "wheel" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/56/54/2beb41f3fcddb4ea238634c6c23fe93115090d8799a45f626a83e6934c16/scikit_build-0.18.1.tar.gz", hash = "sha256:a4152ac5a084d499c28a7797be0628d8366c336e2fb0e1a063eb32e55efcb8e7", size = 274171, upload-time = "2024-08-28T18:18:13.457Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/c3/a3/21b519f58de90d684056c52ec4e45f744cfda7483f082dcc4dd18cc74a93/scikit_build-0.18.1-py3-none-any.whl", hash = "sha256:a6860e300f6807e76f21854163bdb9db16afc74eadf34bd6a9947d3fdfcd725a", size = 85568, upload-time = "2024-08-28T18:18:12.247Z" },
 ]
 
 [[package]]

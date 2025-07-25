@@ -15,6 +15,8 @@ import diskcache
 import factory
 import numpy as np
 
+import nvtx
+
 import gt4py._core.definitions as core_defs
 import gt4py.next.allocators as next_allocators
 from gt4py._core import locking
@@ -25,6 +27,11 @@ from gt4py.next.otf.binding import nanobind
 from gt4py.next.otf.compilation import compiler
 from gt4py.next.otf.compilation.build_systems import compiledb
 from gt4py.next.program_processors.codegens.gtfn import gtfn_module
+
+
+# nvtx traces
+MODULE_COLOR = "orange"
+GT4PY_LABEL = "gt4py"
 
 
 def convert_arg(arg: Any) -> Any:
@@ -48,6 +55,8 @@ def convert_arg(arg: Any) -> Any:
 def convert_args(
     inp: stages.ExtendedCompiledProgram, device: core_defs.DeviceType = core_defs.DeviceType.CPU
 ) -> stages.CompiledProgram:
+
+    @nvtx.annotate(color=MODULE_COLOR, category=GT4PY_LABEL, message="gtfn_call_decorator")
     def decorated_program(
         *args: Any,
         offset_provider: dict[str, common.Connectivity | common.Dimension],

@@ -13,12 +13,19 @@ from typing import Any, Sequence
 
 import dace
 
+import nvtx
+
 from gt4py._core import definitions as core_defs
 from gt4py.next import common as gtx_common, config, metrics, utils as gtx_utils
 from gt4py.next.otf import arguments, stages
 from gt4py.next.program_processors.runners.dace import sdfg_callable, workflow as dace_worflow
 
 from . import common as dace_common
+
+
+# nvtx traces
+MODULE_COLOR = "orange"
+GT4PY_LABEL = "gt4py"
 
 
 def convert_args(
@@ -30,6 +37,7 @@ def convert_args(
         fun.update_sdfg_ctype_arglist, device, fun.sdfg_argtypes
     )
 
+    @nvtx.annotate(color=MODULE_COLOR, category=GT4PY_LABEL, message="dace_call_decorator")
     def decorated_program(
         *args: Any,
         offset_provider: gtx_common.OffsetProvider,

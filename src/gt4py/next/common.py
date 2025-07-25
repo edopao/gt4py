@@ -19,6 +19,8 @@ from collections.abc import Mapping, Sequence
 
 import numpy as np
 
+import nvtx
+
 from gt4py._core import definitions as core_defs
 from gt4py.eve import utils
 from gt4py.eve.extended_typing import (
@@ -45,6 +47,11 @@ from gt4py.eve.extended_typing import (
     runtime_checkable,
 )
 from gt4py.eve.type_definitions import StrEnum
+
+
+# nvtx traces
+MODULE_COLOR = "orange"
+GT4PY_LABEL = "gt4py"
 
 
 DimT = TypeVar("DimT", bound="Dimension")  # , covariant=True)
@@ -1027,6 +1034,7 @@ def is_offset_provider_type(obj: Any) -> TypeGuard[OffsetProviderType]:
     return all(isinstance(el, OffsetProviderTypeElem) for el in obj.values())
 
 
+@nvtx.annotate(color=MODULE_COLOR, category=GT4PY_LABEL, message="offset_provider_to_type")
 def offset_provider_to_type(
     offset_provider: OffsetProvider | OffsetProviderType,
 ) -> OffsetProviderType:

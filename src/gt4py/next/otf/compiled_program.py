@@ -15,12 +15,19 @@ import itertools
 from collections.abc import Sequence
 from typing import Any, TypeAlias
 
+import nvtx
+
 from gt4py._core import definitions as core_defs
 from gt4py.eve import extended_typing, utils as eve_utils
 from gt4py.next import backend as gtx_backend, common, config, errors
 from gt4py.next.ffront import stages as ffront_stages, type_specifications as ts_ffront
 from gt4py.next.otf import arguments, stages
 from gt4py.next.type_system import type_info, type_specifications as ts, type_translation as tt
+
+
+# nvtx traces
+MODULE_COLOR = "orange"
+GT4PY_LABEL = "gt4py"
 
 
 # TODO(havogt): We would like this to be a ProcessPoolExecutor, which requires (to decide what) to pickle.
@@ -143,6 +150,7 @@ class CompiledProgramsPool:
         assert not self.program_type.definition.kw_only_args
         assert not self.program_type.definition.pos_only_args
 
+    @nvtx.annotate(color=MODULE_COLOR, category=GT4PY_LABEL, message="program_call")
     def __call__(
         self, *args: Any, offset_provider: common.OffsetProvider, enable_jit: bool, **kwargs: Any
     ) -> None:
@@ -156,6 +164,7 @@ class CompiledProgramsPool:
         args, kwargs = type_info.canonicalize_arguments(self.program_type, args, kwargs)
         static_args_values = tuple(args[i] for i in self._static_arg_indices)
         key = (static_args_values, self._offset_provider_to_type_unsafe(offset_provider))
+        rng = nvtx.start_range(color=MODULE_COLOR, category=GT4PY_LABEL, message="call_compiled_program")
         try:
             self._compiled_programs[key](*args, **kwargs, offset_provider=offset_provider)
         except TypeError:  # 'Future' object is not callable
@@ -174,6 +183,8 @@ class CompiledProgramsPool:
                     *args, offset_provider=offset_provider, enable_jit=False, **kwargs
                 )  # passing `enable_jit=False` because a cache miss should be a hard-error in this call`
             raise RuntimeError("No program compiled for this set of static arguments.") from e
+        finally:
+            nvtx.end_range(rng)
 
     @functools.cached_property
     def _static_arg_indices(self) -> tuple[int, ...]:

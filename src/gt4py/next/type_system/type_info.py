@@ -24,10 +24,17 @@ from typing import (
 
 import numpy as np
 
+import nvtx
+
 from gt4py.eve.utils import XIterable, xiter
 from gt4py.next import common
 from gt4py.next.iterator.type_system import type_specifications as it_ts
 from gt4py.next.type_system import type_specifications as ts
+
+
+# nvtx traces
+MODULE_COLOR = "orange"
+GT4PY_LABEL = "gt4py"
 
 
 def _number_to_ordinal_number(number: int) -> str:
@@ -665,6 +672,7 @@ def canonicalize_arguments(
 
 
 @canonicalize_arguments.register
+@nvtx.annotate(color=MODULE_COLOR, category=GT4PY_LABEL, message="canonicalize_arguments")
 def canonicalize_function_arguments(
     func_type: ts.FunctionType,
     args: Sequence,
