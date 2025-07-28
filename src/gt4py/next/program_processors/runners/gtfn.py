@@ -14,7 +14,6 @@ from typing import Any, Optional
 import diskcache
 import factory
 import numpy as np
-
 import nvtx
 
 import gt4py._core.definitions as core_defs
@@ -55,7 +54,6 @@ def convert_arg(arg: Any) -> Any:
 def convert_args(
     inp: stages.ExtendedCompiledProgram, device: core_defs.DeviceType = core_defs.DeviceType.CPU
 ) -> stages.CompiledProgram:
-
     @nvtx.annotate(color=MODULE_COLOR, category=GT4PY_LABEL, message="gtfn_call_decorator")
     def decorated_program(
         *args: Any,

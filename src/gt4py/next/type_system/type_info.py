@@ -23,7 +23,6 @@ from typing import (
 )
 
 import numpy as np
-
 import nvtx
 
 from gt4py.eve.utils import XIterable, xiter

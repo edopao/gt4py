@@ -164,7 +164,9 @@ class CompiledProgramsPool:
         args, kwargs = type_info.canonicalize_arguments(self.program_type, args, kwargs)
         static_args_values = tuple(args[i] for i in self._static_arg_indices)
         key = (static_args_values, self._offset_provider_to_type_unsafe(offset_provider))
-        rng = nvtx.start_range(color=MODULE_COLOR, category=GT4PY_LABEL, message="call_compiled_program")
+        rng = nvtx.start_range(
+            color=MODULE_COLOR, category=GT4PY_LABEL, message="call_compiled_program"
+        )
         try:
             self._compiled_programs[key](*args, **kwargs, offset_provider=offset_provider)
         except TypeError:  # 'Future' object is not callable

@@ -12,7 +12,6 @@ import functools
 from typing import Any, Sequence
 
 import dace
-
 import nvtx
 
 from gt4py._core import definitions as core_defs

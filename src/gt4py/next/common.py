@@ -18,7 +18,6 @@ import types
 from collections.abc import Mapping, Sequence
 
 import numpy as np
-
 import nvtx
 
 from gt4py._core import definitions as core_defs
