@@ -265,14 +265,15 @@ class DaCeTranslator(
             #   top-level SDFG with a cpp timer (std::chrono). This timer measures
             #   only the computation time, it does not include the overhead of
             #   calling the SDFG from Python.
-            sdfg.instrument = dace.dtypes.InstrumentationType.GPU_TX_MARKERS
-            for node in sdfg.all_nodes_recursive():
-                if isinstance(node, dace.SDFGState):
-                    node.instrument = dace.dtypes.InstrumentationType.GPU_TX_MARKERS
-                elif isinstance(node, dace.nodes.Tasklet):
-                    node.instrument = dace.dtypes.InstrumentationType.GPU_TX_MARKERS
-                elif isinstance(node, dace.nodes.EntryNode):
-                    node.instrument = dace.dtypes.InstrumentationType.GPU_TX_MARKERS
+            sdfg.instrument = dace.dtypes.InstrumentationType.GPU_TX_MARKERS if config.COLLECT_METRICS_LEVEL == metrics.GPU_TX_MARKERS else dace.dtypes.InstrumentationType.Timer
+            if config.COLLECT_METRICS_LEVEL == metrics.GPU_TX_MARKERS:
+                for node in sdfg.all_nodes_recursive():
+                    if isinstance(node, dace.SDFGState):
+                        node.instrument = dace.dtypes.InstrumentationType.GPU_TX_MARKERS
+                    elif isinstance(node, dace.SDFG):
+                        node.instrument = dace.dtypes.InstrumentationType.GPU_TX_MARKERS
+                    elif isinstance(node, dace.nodes.EntryNode):
+                        node.instrument = dace.dtypes.InstrumentationType.GPU_TX_MARKERS
 
         elif self.async_sdfg_call:
             async_sdfg_call = True
