@@ -267,7 +267,7 @@ class DaCeTranslator(
             #   calling the SDFG from Python.
             sdfg.instrument = dace.dtypes.InstrumentationType.GPU_TX_MARKERS
             for node in sdfg.all_nodes_recursive():
-                if isinstance(node, dace.nodes.SDFGState):
+                if isinstance(node, dace.SDFGState):
                     node.instrument = dace.dtypes.InstrumentationType.GPU_TX_MARKERS
                 elif isinstance(node, dace.nodes.Tasklet):
                     node.instrument = dace.dtypes.InstrumentationType.GPU_TX_MARKERS
