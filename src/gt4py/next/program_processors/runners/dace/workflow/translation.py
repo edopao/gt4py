@@ -283,11 +283,17 @@ class DaCeTranslator(
         program: itir.Program = inp.data
         assert isinstance(program, itir.Program)
 
-        sdfg = self.generate_sdfg(
-            program,
-            inp.args.offset_provider,  # TODO(havogt): should be offset_provider_type once the transformation don't require run-time info
-            inp.args.column_axis,
-        )
+        with dace.instrument(dace.InstrumentationType.GPU_TX_TIMERS,
+                         filter='*',
+                         annotate_maps=True,
+                         annotate_tasklets=False,
+                         annotate_states=True,
+                         annotate_sdfgs=True):
+            sdfg = self.generate_sdfg(
+                program,
+                inp.args.offset_provider,  # TODO(havogt): should be offset_provider_type once the transformation don't require run-time info
+                inp.args.column_axis,
+            )
 
         arg_types = tuple(
             arg.type_ if isinstance(arg, arguments.StaticArg) else arg for arg in inp.args.args
