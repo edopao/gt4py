@@ -265,7 +265,15 @@ class DaCeTranslator(
             #   top-level SDFG with a cpp timer (std::chrono). This timer measures
             #   only the computation time, it does not include the overhead of
             #   calling the SDFG from Python.
-            sdfg.instrument = dace.dtypes.InstrumentationType.Timer
+            sdfg.instrument = dace.dtypes.InstrumentationType.GPU_TX_MARKERS
+            for node in sdfg.all_nodes_recursive():
+                if isinstance(node, dace.nodes.SDFGState):
+                    node.instrument = dace.dtypes.InstrumentationType.GPU_TX_MARKERS
+                elif isinstance(node, dace.nodes.Tasklet):
+                    node.instrument = dace.dtypes.InstrumentationType.GPU_TX_MARKERS
+                elif isinstance(node, dace.nodes.EntryNode):
+                    node.instrument = dace.dtypes.InstrumentationType.GPU_TX_MARKERS
+
         elif self.async_sdfg_call:
             async_sdfg_call = True
 
@@ -283,17 +291,11 @@ class DaCeTranslator(
         program: itir.Program = inp.data
         assert isinstance(program, itir.Program)
 
-        with dace.instrument(dace.InstrumentationType.GPU_TX_TIMERS,
-                         filter='*',
-                         annotate_maps=True,
-                         annotate_tasklets=False,
-                         annotate_states=True,
-                         annotate_sdfgs=True):
-            sdfg = self.generate_sdfg(
-                program,
-                inp.args.offset_provider,  # TODO(havogt): should be offset_provider_type once the transformation don't require run-time info
-                inp.args.column_axis,
-            )
+        sdfg = self.generate_sdfg(
+            program,
+            inp.args.offset_provider,  # TODO(havogt): should be offset_provider_type once the transformation don't require run-time info
+            inp.args.column_axis,
+        )
 
         arg_types = tuple(
             arg.type_ if isinstance(arg, arguments.StaticArg) else arg for arg in inp.args.args
