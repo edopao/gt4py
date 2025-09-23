@@ -268,9 +268,9 @@ class DaCeTranslator(
             sdfg.instrument = dace.dtypes.InstrumentationType.GPU_TX_MARKERS if config.COLLECT_METRICS_LEVEL == metrics.GPU_TX_MARKERS else dace.dtypes.InstrumentationType.Timer
             if config.COLLECT_METRICS_LEVEL == metrics.GPU_TX_MARKERS:
                 for node in sdfg.all_nodes_recursive():
-                    if isinstance(node, dace.SDFGState):
+                    if isinstance(node, dace.sdfg.SDFGState):
                         node.instrument = dace.dtypes.InstrumentationType.GPU_TX_MARKERS
-                    elif isinstance(node, dace.SDFG):
+                    elif isinstance(node, dace.sdfg.SDFG):
                         node.instrument = dace.dtypes.InstrumentationType.GPU_TX_MARKERS
                     elif isinstance(node, dace.nodes.EntryNode):
                         node.instrument = dace.dtypes.InstrumentationType.GPU_TX_MARKERS
