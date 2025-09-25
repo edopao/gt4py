@@ -29,6 +29,7 @@ TOTAL_METRIC: Final = sys.intern("total")
 # Metric collection levels
 DISABLED: Final = 0
 MINIMAL: Final = 1
+GPU_TX_MARKERS: Final = 2
 PERFORMANCE: Final = 10
 INFO: Final = 30
 VERBOSE: Final = 50
