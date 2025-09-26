@@ -324,10 +324,6 @@ class HorizontalSplitMapRange(SplitMapRange):
         if splitted_range is None:
             return False
 
-        # restrict splitting to only one of the two maps
-        if all(len(r) != 1 for r in splitted_range):
-            return False
-
         return True
 
     def apply(
@@ -459,10 +455,6 @@ class VerticalSplitMapRange(SplitMapRange):
 
         splitted_range = gtx_mfutils.split_overlapping_map_range(first_map, second_map)
         if splitted_range is None:
-            return False
-
-        # restrict splitting to only one of the two maps
-        if all(len(r) != 1 for r in splitted_range):
             return False
 
         # TODO(phimuell): Implement a check that the array is single use data?
