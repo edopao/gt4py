@@ -38,7 +38,10 @@ class Context:
     """Mapping connector names to memlets flowing out of the Tasklet."""
 
     tree: tir.TreeRoot
-    """Schedule tree in which this Tasklet will be inserted."""
+    """Schedule tree (root) in which this Tasklet will be inserted."""
+
+    scope: tir.TreeScope
+    """Schedule tree scope in which this Tasklet will be inserted."""
 
 
 class OIRToTasklet(eve.NodeVisitor):
@@ -50,10 +53,10 @@ class OIRToTasklet(eve.NodeVisitor):
     """
 
     def visit_CodeBlock(
-        self, node: oir.CodeBlock, root: tir.TreeRoot
+        self, node: oir.CodeBlock, root: tir.TreeRoot, scope: tir.TreeScope
     ) -> tuple[nodes.Tasklet, dict[str, Memlet], dict[str, Memlet]]:
         """Entry point to gather all code, inputs and outputs."""
-        ctx = Context(code=[], targets=set(), inputs={}, outputs={}, tree=root)
+        ctx = Context(code=[], targets=set(), inputs={}, outputs={}, tree=root, scope=scope)
 
         self.visit(node.body, ctx=ctx)
 
@@ -100,7 +103,7 @@ class OIRToTasklet(eve.NodeVisitor):
 
         # Variable K offset subscript
         if isinstance(node.offset, oir.VariableKOffset):
-            symbol = tir.Axis.K.iteration_dace_symbol()
+            symbol = tir.k_symbol(ctx.scope)
             shift = ctx.tree.shift[node.name][tir.Axis.K]
             offset = self.visit(node.offset.k, ctx=ctx, is_target=False)
             name_parts.append(f"[({symbol}) + ({shift}) + ({offset})]")
@@ -173,13 +176,12 @@ class OIRToTasklet(eve.NodeVisitor):
         return f"{dtype}({expression})"
 
     def visit_Literal(self, node: oir.Literal, **kwargs: Any) -> str:
-        if type(node.value) is str:
-            # Note: isinstance(node.value, str) also matches the string enum `BuiltInLiteral`
-            # which we don't want to match because it returns lower-case `true`, which isn't
-            # defined in (python) tasklet code.
-            return node.value
+        if isinstance(node.value, common.BuiltInLiteral):
+            return self.visit(node.value, **kwargs)
 
-        return self.visit(node.value, **kwargs)
+        # Resolve int and float literals to the correct precision
+        dtype = utils.data_type_to_dace_typeclass(node.dtype)
+        return f"{dtype}({node.value})"
 
     def visit_BuiltInLiteral(self, node: common.BuiltInLiteral, **_kwargs: Any) -> str:
         if node == common.BuiltInLiteral.TRUE:
@@ -221,6 +223,14 @@ class OIRToTasklet(eve.NodeVisitor):
             common.NativeFunction.FLOOR: "dace.math.ifloor",
             common.NativeFunction.CEIL: "ceil",
             common.NativeFunction.TRUNC: "trunc",
+            common.NativeFunction.INT32: "dace.int32",
+            common.NativeFunction.INT64: "dace.int64",
+            common.NativeFunction.FLOAT32: "dace.float32",
+            common.NativeFunction.FLOAT64: "dace.float64",
+            common.NativeFunction.ERF: "erf",
+            common.NativeFunction.ERFC: "erfc",
+            common.NativeFunction.ROUND: "nearbyint",
+            common.NativeFunction.ROUND_AWAY_FROM_ZERO: "round",
         }
         if node not in native_functions:
             raise NotImplementedError(f"NativeFunction '{node}' not (yet) implemented.")
@@ -338,7 +348,12 @@ def _memlet_subset_cartesian(
     # Handle cartesian indices
     for index, axis in enumerate(tir.Axis.dims_3d()):
         if dimensions[index]:
-            i = f"({axis.iteration_dace_symbol()}) + ({shift[axis]}) + ({offset_dict[axis.lower()]})"
+            iteration_symbol = (
+                utils.get_dace_symbol(tir.k_symbol(ctx.scope))
+                if axis == tir.Axis.K
+                else axis.iteration_dace_symbol()
+            )
+            i = f"({iteration_symbol}) + ({shift[axis]}) + ({offset_dict[axis.lower()]})"
             ranges.append((i, i, 1))
 
     # Append data dimensions
