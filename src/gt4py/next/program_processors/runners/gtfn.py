@@ -7,18 +7,15 @@
 # SPDX-License-Identifier: BSD-3-Clause
 
 import functools
-import pathlib
-import tempfile
-from typing import Any, Optional
+from typing import Any
 
-import diskcache
 import factory
 import numpy as np
 import nvtx
 
 import gt4py._core.definitions as core_defs
 import gt4py.next.allocators as next_allocators
-from gt4py._core import locking
+from gt4py._core import filecache
 from gt4py.next import backend, common, config, field_utils, metrics
 from gt4py.next.embedded import nd_array_field
 from gt4py.next.otf import recipes, stages, workflow
@@ -67,10 +64,8 @@ def convert_args(
         conn_args = extract_connectivity_args(offset_provider, device)
 
         opt_kwargs: dict[str, Any]
-        metric_collection = metrics.get_active_metric_collection()
-        if collect_metrics := (
-            metric_collection is not None and (config.COLLECT_METRICS_LEVEL >= metrics.PERFORMANCE)
-        ):
+
+        if collect_metrics := (config.COLLECT_METRICS_LEVEL >= metrics.PERFORMANCE):
             # If we are collecting metrics, we need to add the `exec_info` argument
             # to the `inp` call, which will be used to collect performance metrics.
             exec_info: dict[str, float] = {}
@@ -86,9 +81,8 @@ def convert_args(
         )
 
         if collect_metrics:
-            assert metric_collection is not None
             value = exec_info["run_cpp_end_time"] - exec_info["run_cpp_start_time"]
-            metric_collection.add_sample(metrics.COMPUTE_METRIC, value)
+            metrics.get_current_source().metrics[metrics.COMPUTE_METRIC].add_sample(value)
 
     return decorated_program
 
@@ -109,38 +103,6 @@ def extract_connectivity_args(
     return args
 
 
-class FileCache(diskcache.Cache):
-    """
-    This class extends `diskcache.Cache` to ensure the cache is properly
-    - opened when accessed by multiple processes using a file lock. This guards the creating of the
-    cache object, which has been reported to cause `sqlite3.OperationalError: database is locked`
-    errors and slow startup times when multiple processes access the cache concurrently. While this
-    issue occurred frequently and was observed to be fixed on distributed file systems, the lock
-    does not guarantee correct behavior in particular for accesses to the cache (beyond opening)
-    since the underlying SQLite database is unreliable when stored on an NFS based file system.
-    It does however ensure correctness of concurrent cache accesses on a local file system. See
-    #1745 for more details.
-    - closed upon deletion, i.e. it ensures that any resources associated with the cache are
-    properly released when the instance is garbage collected.
-    """
-
-    def __init__(self, directory: Optional[str | pathlib.Path] = None, **settings: Any) -> None:
-        if directory:
-            lock_dir = pathlib.Path(directory).parent
-        else:
-            lock_dir = pathlib.Path(tempfile.gettempdir())
-
-        lock_dir.mkdir(parents=True, exist_ok=True)
-        with locking.lock(lock_dir):
-            super().__init__(directory=directory, **settings)
-
-        self._init_complete = True
-
-    def __del__(self) -> None:
-        if getattr(self, "_init_complete", False):  # skip if `__init__` didn't finished
-            self.close()
-
-
 class GTFNCompileWorkflowFactory(factory.Factory):
     class Meta:
         model = recipes.OTFCompileWorkflow
@@ -159,7 +121,7 @@ class GTFNCompileWorkflowFactory(factory.Factory):
                 lambda o: workflow.CachedStep(
                     o.bare_translation,
                     hash_function=stages.fingerprint_compilable_program,
-                    cache=FileCache(str(config.BUILD_CACHE_DIR / "gtfn_cache")),
+                    cache=filecache.FileCache(str(config.BUILD_CACHE_DIR / "gtfn_cache")),
                 )
             ),
         )
