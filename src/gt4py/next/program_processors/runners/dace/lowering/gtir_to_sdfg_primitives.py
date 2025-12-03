@@ -269,7 +269,7 @@ def translate_as_fieldop(
             # on the given domain. It copies a subset of the source field.
             arg = sdfg_builder.visit(node.args[0], ctx=ctx)
             assert isinstance(arg, gtir_to_sdfg_types.FieldopData)
-            return ctx.copy_field(arg, domain=field_domain)
+            return ctx.copy_data(arg, domain=field_domain)
     elif isinstance(fieldop_expr, gtir.Lambda):
         # Default case, handled below: the argument expression is a lambda function
         # representing the stencil operation to be computed over the field domain.
@@ -426,34 +426,34 @@ def translate_if(
 
     # expect true branch as second argument
     true_state = ctx.sdfg.add_state(ctx.state.label + "_true_branch")
-    tbranch_ctx = gtir_to_sdfg.SubgraphContext(ctx.sdfg, true_state)
     ctx.sdfg.add_edge(cond_state, true_state, dace.InterstateEdge(condition=if_stmt))
     ctx.sdfg.add_edge(true_state, ctx.state, dace.InterstateEdge())
 
     # and false branch as third argument
     false_state = ctx.sdfg.add_state(ctx.state.label + "_false_branch")
-    fbranch_ctx = gtir_to_sdfg.SubgraphContext(ctx.sdfg, false_state)
     ctx.sdfg.add_edge(cond_state, false_state, dace.InterstateEdge(condition=f"not({if_stmt})"))
     ctx.sdfg.add_edge(false_state, ctx.state, dace.InterstateEdge())
 
-    true_br_result = sdfg_builder.visit(true_expr, ctx=tbranch_ctx)
-    false_br_result = sdfg_builder.visit(false_expr, ctx=fbranch_ctx)
+    with sdfg_builder.setup_ctx_in_new_state(ctx, true_state) as tbranch_ctx:
+        with sdfg_builder.setup_ctx_in_new_state(ctx, false_state) as fbranch_ctx:
+            true_br_result = sdfg_builder.visit(true_expr, ctx=tbranch_ctx)
+            false_br_result = sdfg_builder.visit(false_expr, ctx=fbranch_ctx)
 
-    node_output = gtx_utils.tree_map(
-        lambda domain, true_br, false_br: _construct_if_branch_output(
-            ctx, sdfg_builder, domain, true_br, false_br
-        )
-    )(
-        node.annex.domain,
-        true_br_result,
-        false_br_result,
-    )
-    gtx_utils.tree_map(lambda src, dst: _write_if_branch_output(tbranch_ctx, src, dst))(
-        true_br_result, node_output
-    )
-    gtx_utils.tree_map(lambda src, dst: _write_if_branch_output(fbranch_ctx, src, dst))(
-        false_br_result, node_output
-    )
+            node_output = gtx_utils.tree_map(
+                lambda domain, true_br, false_br: _construct_if_branch_output(
+                    ctx, sdfg_builder, domain, true_br, false_br
+                )
+            )(
+                node.annex.domain,
+                true_br_result,
+                false_br_result,
+            )
+            gtx_utils.tree_map(lambda src, dst: _write_if_branch_output(tbranch_ctx, src, dst))(
+                true_br_result, node_output
+            )
+            gtx_utils.tree_map(lambda src, dst: _write_if_branch_output(fbranch_ctx, src, dst))(
+                false_br_result, node_output
+            )
 
     return node_output
 
@@ -620,25 +620,6 @@ def translate_tuple_get(
     data_nodes = sdfg_builder.visit(node.args[1], ctx=ctx)
     if isinstance(data_nodes, gtir_to_sdfg_types.FieldopData):
         raise ValueError(f"Invalid tuple expression {node}")
-    # Now we remove the tuple fields that are not used, to avoid an SDFG validation
-    # error because of isolated access nodes.
-    unused_data_nodes = gtx_utils.flatten_nested_tuple(
-        tuple(arg for i, arg in enumerate(data_nodes) if i != index)
-    )
-    # For temporary fields inside the tuple (non-globals and non-scalar values,
-    # supposed to contain the result of some field operator), the domain inference
-    # pass should have already set an empty domain, so the corresponding `arg`
-    # is expected to be None and should be ignored.
-    # We also ignore transient fields, because they should never appear as isolated
-    # access nodes by construction: temporary fields are supposed to always contain
-    # the result of some expression.
-    access_nodes_to_remove = [
-        arg.dc_node
-        for arg in unused_data_nodes
-        if not (arg is None or arg.dc_node.desc(ctx.sdfg).transient)
-    ]
-    assert all(ctx.state.degree(access_node) == 0 for access_node in access_nodes_to_remove)
-    ctx.state.remove_nodes_from(access_nodes_to_remove)
     return data_nodes[index]
 
 
@@ -656,14 +637,10 @@ def translate_scalar_expr(
 
     for i, arg_expr in enumerate(node.args):
         visit_expr = True
-        if isinstance(arg_expr, gtir.SymRef):
-            try:
-                # check if symbol is defined in the GT4Py program, throws `KeyError` exception if undefined
-                sdfg_builder.get_symbol_type(arg_expr.id)
-            except KeyError:
-                # all `SymRef` should refer to symbols defined in the program, except in case of non-variable argument,
-                # e.g. the type name `float64` used in casting expressions like `cast_(variable, float64)`
-                visit_expr = False
+        if isinstance(arg_expr, gtir.SymRef) and str(arg_expr.id) not in ctx.data_nodes:
+            # all `SymRef` should refer to symbols defined in the program, except in case of non-variable argument,
+            # e.g. the type name `float64` used in casting expressions like `cast_(variable, float64)`
+            visit_expr = False
 
         if visit_expr:
             # we visit the argument expression and obtain the access node to
@@ -716,24 +693,6 @@ def translate_scalar_expr(
     return gtir_to_sdfg_types.FieldopData(temp_node, node.type, origin=())
 
 
-def translate_symbol_ref(
-    node: gtir.Node,
-    ctx: gtir_to_sdfg.SubgraphContext,
-    sdfg_builder: gtir_to_sdfg.SDFGBuilder,
-) -> gtir_to_sdfg_types.FieldopResult:
-    """Generates the dataflow subgraph for a `ir.SymRef` node."""
-    assert isinstance(node, gtir.SymRef)
-
-    symbol_name = str(node.id)
-    # we retrieve the type of the symbol in the GT4Py prgram
-    gt_symbol_type = sdfg_builder.get_symbol_type(symbol_name)
-
-    # Create new access node in current state. It is possible that multiple
-    # access nodes are created in one state for the same data container.
-    # We rely on the dace simplify pass to remove duplicated access nodes.
-    return _get_data_nodes(ctx.sdfg, ctx.state, sdfg_builder, symbol_name, gt_symbol_type)
-
-
 if TYPE_CHECKING:
     # Use type-checking to assert that all translator functions implement the `PrimitiveTranslator` protocol
     __primitive_translators: list[PrimitiveTranslator] = [
@@ -746,5 +705,4 @@ if TYPE_CHECKING:
         translate_tuple_get,
         translate_scalar_expr,
         translate_scan,
-        translate_symbol_ref,
     ]

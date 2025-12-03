@@ -8,11 +8,10 @@
 
 from __future__ import annotations
 
-from typing import Dict, Final, Mapping, Optional, TypeVar
+from typing import Final, Mapping, Optional
 
 import dace
 
-from gt4py import eve
 from gt4py.eve.extended_typing import NestedTuple
 from gt4py.next import common as gtx_common, utils as gtx_utils
 from gt4py.next.iterator import ir as gtir
@@ -100,57 +99,6 @@ def flatten_tuple_fields(tuple_name: str, tuple_type: ts.TupleType) -> list[gtir
     """
     symbol_tree = make_symbol_tree(tuple_name, tuple_type)
     return list(gtx_utils.flatten_nested_tuple(symbol_tree))
-
-
-def replace_invalid_symbols(ir: gtir.Program) -> gtir.Program:
-    """
-    Ensure that all symbols used in the program IR are valid strings (e.g. no unicode-strings).
-
-    If any invalid symbol present, this function returns a copy of the input IR where
-    the invalid symbols have been replaced with new names. If all symbols are valid,
-    the input IR is returned without copying it.
-    """
-
-    class ReplaceSymbols(eve.PreserveLocationVisitor, eve.NodeTranslator):
-        PRESERVED_ANNEX_ATTRS = ("domain",)
-
-        T = TypeVar("T", gtir.Sym, gtir.SymRef)
-
-        def _replace_sym(self, node: T, symtable: Dict[str, str]) -> T:
-            sym = str(node.id)
-            return type(node)(id=symtable.get(sym, sym), type=node.type)
-
-        def visit_Sym(self, node: gtir.Sym, *, symtable: Dict[str, str]) -> gtir.Sym:
-            return self._replace_sym(node, symtable)
-
-        def visit_SymRef(self, node: gtir.SymRef, *, symtable: Dict[str, str]) -> gtir.SymRef:
-            return self._replace_sym(node, symtable)
-
-    # program arguments are checked separetely, because they cannot be replaced
-    if not all(dace.dtypes.validate_name(str(sym.id)) for sym in ir.params):
-        raise ValueError("Invalid symbol in program parameters.")
-
-    # check there are no conflicts with the connctor names generated in the lowering
-    if any(str(sym.id).startswith(_TASKLET_CONNECTOR_PREFIX) for sym in ir.params):
-        raise ValueError(
-            f"Unexpectd symbol with prefix '{_TASKLET_CONNECTOR_PREFIX}' in program parameters."
-        )
-
-    ir_sym_ids = {str(sym.id) for sym in eve.walk_values(ir).if_isinstance(gtir.Sym).to_set()}
-    ir_ssa_uuid = eve.utils.UIDGenerator(prefix="gtir_var")
-
-    # note: traverse in alphabetical order to generate UIDs in deterministic way
-    invalid_symbols_mapping = {
-        sym_id: ir_ssa_uuid.sequential_id()
-        for sym_id in sorted(ir_sym_ids)
-        if not dace.dtypes.validate_name(sym_id)
-    }
-    if len(invalid_symbols_mapping) == 0:
-        return ir
-
-    # assert that the new symbol names are not used in the IR
-    assert ir_sym_ids.isdisjoint(invalid_symbols_mapping.values())
-    return ReplaceSymbols().visit(ir, symtable=invalid_symbols_mapping)
 
 
 def get_symbolic(ir: gtir.Expr) -> dace.symbolic.SymbolicType:
