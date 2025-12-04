@@ -294,103 +294,38 @@ def translate_as_fieldop(
 
 
 def _construct_if_branch_output(
-    ctx: gtir_to_sdfg.SubgraphContext,
-    sdfg_builder: gtir_to_sdfg.SDFGBuilder,
+    tbranch_ctx: gtir_to_sdfg.SubgraphContext,
+    fbranch_ctx: gtir_to_sdfg.SubgraphContext,
+    tbranch_data: gtir_to_sdfg_types.FieldopData | None,
+    fbranch_data: gtir_to_sdfg_types.FieldopData | None,
     domain: infer_domain.NonTupleDomainAccess,
-    true_br: gtir_to_sdfg_types.FieldopData,
-    false_br: gtir_to_sdfg_types.FieldopData,
 ) -> gtir_to_sdfg_types.FieldopData | None:
-    """
-    Helper function called by `translate_if()` to allocate a temporary field to store
-    the result of an if expression.
-    """
-    if domain == infer_domain.DomainAccessDescriptor.NEVER:
+    if tbranch_data is None:
+        assert fbranch_data is None
+        assert domain == infer_domain.DomainAccessDescriptor.NEVER
         return None
+
+    assert fbranch_data is not None
     assert isinstance(domain, domain_utils.SymbolicDomain)
-    assert true_br.gt_type == false_br.gt_type
-    out_type = true_br.gt_type
-
-    if isinstance(out_type, ts.ScalarType):
-        dtype = gtx_dace_args.as_dace_type(out_type)
-        out, _ = sdfg_builder.add_temp_scalar(ctx.sdfg, dtype)
-        out_node = ctx.state.add_access(out)
-        return gtir_to_sdfg_types.FieldopData(out_node, out_type, origin=())
-
-    assert isinstance(out_type, ts.FieldType)
     field_domain = gtir_domain.get_field_domain(domain)
-    dims, origin, shape = gtir_domain.get_field_layout(field_domain)
-    assert dims == out_type.dims
+    tbranch_output = tbranch_ctx.copy_data(tbranch_data, field_domain)
+    tbranch_output_edge = tbranch_ctx.state.in_edges(tbranch_output.dc_node)[0]
+    assert tbranch_output_edge.src == tbranch_data.dc_node
+    assert tbranch_output_edge.data.data == tbranch_output.dc_node.data
+    fbranch_output = fbranch_ctx.copy_data(fbranch_data, field_domain)
+    fbranch_output_edge = fbranch_ctx.state.in_edges(fbranch_output.dc_node)[0]
+    assert fbranch_output_edge.src == fbranch_data.dc_node
+    assert fbranch_output_edge.data.data == fbranch_output.dc_node.data
 
-    if isinstance(out_type.dtype, ts.ScalarType):
-        dtype = gtx_dace_args.as_dace_type(out_type.dtype)
-    else:
-        assert isinstance(out_type.dtype, ts.ListType)
-        assert out_type.dtype.offset_type is not None
-        assert isinstance(out_type.dtype.element_type, ts.ScalarType)
-        dtype = gtx_dace_args.as_dace_type(out_type.dtype.element_type)
-        offset_provider_type = sdfg_builder.get_offset_provider_type(
-            out_type.dtype.offset_type.value
-        )
-        assert isinstance(offset_provider_type, gtx_common.NeighborConnectivityType)
-        shape = [*shape, offset_provider_type.max_neighbors]
-
-    out, _ = sdfg_builder.add_temp_array(ctx.sdfg, shape, dtype)
-    out_node = ctx.state.add_access(out)
-
-    return gtir_to_sdfg_types.FieldopData(out_node, out_type, tuple(origin))
-
-
-def _write_if_branch_output(
-    ctx: gtir_to_sdfg.SubgraphContext,
-    src: gtir_to_sdfg_types.FieldopData,
-    dst: gtir_to_sdfg_types.FieldopData | None,
-) -> None:
-    """
-    Helper function called by `translate_if()` to write the result of an if-branch,
-    here `src` field, to the output 'dst' field. The data subset is based on the
-    domain of the `dst` field. Therefore, the full shape of `dst` array is written.
-    """
-    if dst is None:
-        return
-    elif src.gt_type != dst.gt_type:
-        raise ValueError(
-            f"Source and destination type mismatch, '{dst.gt_type}' vs '{src.gt_type}'."
-        )
-    dst_node = ctx.state.add_access(dst.dc_node.data)
-    dst_shape = dst_node.desc(ctx.sdfg).shape
-
-    if isinstance(src.gt_type, ts.ScalarType):
-        ctx.state.add_nedge(
-            src.dc_node,
-            dst_node,
-            dace.Memlet(data=src.dc_node.data, subset="0"),
-        )
-    else:
-        if isinstance(src.gt_type.dtype, ts.ListType):
-            src_origin = [*src.origin, 0]
-            dst_origin = [*dst.origin, 0]
-        else:
-            src_origin = [*src.origin]
-            dst_origin = [*dst.origin]
-
-        data_subset = dace_subsets.Range(
-            (
-                f"{dst_start - src_start}",
-                f"{dst_start - src_start + size - 1}",  # subtract 1 because the range boundaries are included
-                1,
-            )
-            for src_start, dst_start, size in zip(src_origin, dst_origin, dst_shape, strict=True)
-        )
-
-        ctx.state.add_nedge(
-            src.dc_node,
-            dst_node,
-            dace.Memlet(
-                data=src.dc_node.data,
-                subset=data_subset,
-                other_subset=dace_subsets.Range.from_array(dst_node.desc(ctx.sdfg)),
-            ),
-        )
+    fbranch_output_node = fbranch_ctx.state.add_access(tbranch_output.dc_node.data)
+    fbranch_output_memlet = dace.Memlet(
+        data=tbranch_output.dc_node.data,
+        subset=tbranch_output_edge.data.subset,
+        other_subset=fbranch_output_edge.data.other_subset,
+    )
+    fbranch_ctx.state.add_nedge(fbranch_data.dc_node, fbranch_output_node, fbranch_output_memlet)
+    fbranch_ctx.state.remove_node(fbranch_output.dc_node)
+    return tbranch_output
 
 
 def translate_if(
@@ -404,58 +339,65 @@ def translate_if(
     cond_expr, true_expr, false_expr = node.args
 
     # expect condition as first argument
-    if_stmt = gtir_python_codegen.get_source(cond_expr)
+    if_cond_stmt = gtir_python_codegen.get_source(cond_expr)
 
-    # evaluate the if-condition in a new entry state and use the current head state
-    # to join the true/false branch states as follows:
-    #
-    #               ------------
-    #           === |   cond   | ===
-    #          ||   ------------   ||
-    #          \/                  \/
-    #     ------------       -------------
-    #     |   true   |       |   false   |
-    #     ------------       -------------
-    #          ||                  ||
-    #          ||   ------------   ||
-    #           ==> |   head   | <==
-    #               ------------
-    #
-    cond_state = ctx.sdfg.add_state_before(ctx.state, ctx.state.label + "_cond")
-    ctx.sdfg.remove_edge(ctx.sdfg.out_edges(cond_state)[0])
+    nsdfg, input_params = sdfg_builder.setup_nested_sdfg(
+        expr=node,
+        sdfg_name="if_stmt",
+        parent_ctx=ctx,
+        params=[],
+        capture_scope_symbols=True,
+    )
 
-    # expect true branch as second argument
-    true_state = ctx.sdfg.add_state(ctx.state.label + "_true_branch")
-    ctx.sdfg.add_edge(cond_state, true_state, dace.InterstateEdge(condition=if_stmt))
-    ctx.sdfg.add_edge(true_state, ctx.state, dace.InterstateEdge())
+    # create states inside the nested SDFG for the if-branches
+    if_region = dace.sdfg.state.ConditionalBlock("if")
+    nsdfg.add_node(if_region, ensure_unique_name=True)
+    entry_state = nsdfg.add_state("entry", is_start_block=True)
+    nsdfg.add_edge(entry_state, if_region, dace.InterstateEdge())
 
-    # and false branch as third argument
-    false_state = ctx.sdfg.add_state(ctx.state.label + "_false_branch")
-    ctx.sdfg.add_edge(cond_state, false_state, dace.InterstateEdge(condition=f"not({if_stmt})"))
-    ctx.sdfg.add_edge(false_state, ctx.state, dace.InterstateEdge())
+    then_body = dace.sdfg.state.ControlFlowRegion("then_body", sdfg=nsdfg)
+    tstate = then_body.add_state("true_branch", is_start_block=True)
+    if_region.add_branch(dace.sdfg.state.CodeBlock(if_cond_stmt), then_body)
 
-    with sdfg_builder.setup_ctx_in_new_state(ctx, true_state) as tbranch_ctx:
-        with sdfg_builder.setup_ctx_in_new_state(ctx, false_state) as fbranch_ctx:
+    else_body = dace.sdfg.state.ControlFlowRegion("else_body", sdfg=nsdfg)
+    fstate = else_body.add_state("false_branch", is_start_block=True)
+    if_region.add_branch(None, else_body)
+
+    data_args, symbolic_args = gtir_to_sdfg.flatten_tuple_args(ctx.data_nodes)
+
+    with sdfg_builder.setup_ctx(nsdfg, tstate, input_params) as tbranch_ctx:
+        with sdfg_builder.setup_ctx(nsdfg, fstate, input_params) as fbranch_ctx:
             true_br_result = sdfg_builder.visit(true_expr, ctx=tbranch_ctx)
             false_br_result = sdfg_builder.visit(false_expr, ctx=fbranch_ctx)
 
             node_output = gtx_utils.tree_map(
-                lambda domain, true_br, false_br: _construct_if_branch_output(
-                    ctx, sdfg_builder, domain, true_br, false_br
+                lambda tbranch_data, fbranch_data, domain: _construct_if_branch_output(
+                    tbranch_ctx, fbranch_ctx, tbranch_data, fbranch_data, domain
                 )
-            )(
-                node.annex.domain,
-                true_br_result,
-                false_br_result,
-            )
-            gtx_utils.tree_map(lambda src, dst: _write_if_branch_output(tbranch_ctx, src, dst))(
-                true_br_result, node_output
-            )
-            gtx_utils.tree_map(lambda src, dst: _write_if_branch_output(fbranch_ctx, src, dst))(
-                false_br_result, node_output
+            )(true_br_result, false_br_result, node.annex.domain)
+
+            nsdfg_node, input_memlets, output = sdfg_builder.add_nested_sdfg(
+                expr=node,
+                sdfg=nsdfg,
+                outer_ctx=ctx,
+                symbolic_args=symbolic_args,
+                data_args=data_args,
+                inner_result=node_output,
+                output_domain=node.annex.domain,
             )
 
-    return node_output
+    for input_connector, memlet in input_memlets.items():
+        if input_connector in data_args:
+            arg = data_args[input_connector]
+            assert arg is not None
+            src_node = arg.dc_node
+        else:
+            assert gtx_dace_args.is_connectivity_identifier(input_connector)
+            ctx.sdfg.arrays[input_connector].transient = False
+            src_node = ctx.state.add_access(input_connector)
+        ctx.state.add_edge(src_node, None, nsdfg_node, input_connector, memlet)
+
+    return output
 
 
 def translate_index(

@@ -89,7 +89,7 @@ def _parse_scan_fieldop_arg(
 def _create_scan_field_operator_impl(
     ctx: gtir_to_sdfg.SubgraphContext,
     sdfg_builder: gtir_to_sdfg.SDFGBuilder,
-    output_edge: gtir_dataflow.DataflowOutputEdge | None,
+    column: gtir_to_sdfg_types.FieldopData | None,
     output_domain: infer_domain.NonTupleDomainAccess,
     output_type: ts.FieldType,
     map_exit: dace.nodes.MapExit | None,
@@ -118,21 +118,21 @@ def _create_scan_field_operator_impl(
     Refer to `gtir_to_sdfg_primitives._create_field_operator_impl()` for
     the description of function arguments.
     """
-    if output_edge is None:
+    if column is None:
         # According to domain inference, this tuple field does not need to be computed.
         assert output_domain == infer_domain.DomainAccessDescriptor.NEVER
         return None
+    assert isinstance(column.gt_type, ts.FieldType)
     assert isinstance(output_domain, domain_utils.SymbolicDomain)
     field_domain = gtir_domain.get_field_domain(output_domain)
 
-    dataflow_output_desc = output_edge.result.dc_node.desc(ctx.sdfg)
+    dataflow_output_desc = column.dc_node.desc(ctx.sdfg)
     assert isinstance(dataflow_output_desc, dace.data.Array)
 
-    if isinstance(output_edge.result.gt_dtype, ts.ScalarType):
-        assert isinstance(output_type.dtype, ts.ScalarType)
-        if output_edge.result.gt_dtype != output_type.dtype:
+    if isinstance(column.gt_type.dtype, ts.ScalarType):
+        if column.gt_type.dtype != output_type.dtype:
             raise TypeError(
-                f"Type mismatch, expected {output_type.dtype} got {output_edge.result.gt_dtype}."
+                f"Type mismatch, expected {output_type.dtype} got {column.gt_type.dtype}."
             )
         # the scan field operator computes a column of scalar values
         assert len(dataflow_output_desc.shape) == 1
@@ -167,21 +167,28 @@ def _create_scan_field_operator_impl(
     #  Up to now the nested SDFG is writing into a transient data container that
     #  has the size to hold one column. The function below, that does the connection,
     #  will remove that transient and write directly to the result field.
-    inner_map_output_temporary_removed = output_edge.connect(map_exit, field_node, field_subset)
-    if not inner_map_output_temporary_removed:
-        raise ValueError("The scan nested SDFG is expected to write directly to the result field.")
-
-    assert ctx.state.in_degree(field_node) == 1
-    field_node_path = ctx.state.memlet_path(next(iter(ctx.state.in_edges(field_node))))
-    assert field_node_path[-1].dst is field_node
+    write_edge = ctx.state.in_edges(column.dc_node)[0]
+    write_memlet = dace.Memlet(data=field_name, subset=field_subset)
+    ctx.state.remove_node(write_edge.dst)
+    if map_exit is None:
+        ctx.state.add_edge(write_edge.src, write_edge.src_conn, field_node, None, write_memlet)
+    else:
+        ctx.state.add_memlet_path(
+            write_edge.src,
+            map_exit,
+            field_node,
+            src_conn=write_edge.src_conn,
+            memlet=write_memlet,
+            propagate=True,
+        )
 
     # The temporary node which the nested SDFG was writing to has been deleted,
     #  and the nested SDFG will write directly to the result field. Thus, we have
     #  to modify the stride of the scan column array inside the nested SDFG to match
     #  the strides outside.
-    nsdfg_scan = field_node_path[0].src
+    nsdfg_scan = write_edge.src
     assert isinstance(nsdfg_scan, dace.nodes.NestedSDFG)
-    inner_output_name = field_node_path[0].src_conn
+    inner_output_name = write_edge.src_conn
     inner_output_desc = nsdfg_scan.sdfg.arrays[inner_output_name]
     assert len(inner_output_desc.shape) == 1
 
@@ -193,7 +200,7 @@ def _create_scan_field_operator_impl(
     inner_output_desc.set_shape(new_shape=inner_output_desc.shape, strides=(outside_output_stride,))
 
     return gtir_to_sdfg_types.FieldopData(
-        field_node, ts.FieldType(field_dims, output_edge.result.gt_dtype), tuple(field_origin)
+        field_node, ts.FieldType(field_dims, output_type.dtype), tuple(field_origin)
     )
 
 
@@ -203,7 +210,7 @@ def _create_scan_field_operator(
     node_type: ts.FieldType | ts.TupleType,
     sdfg_builder: gtir_to_sdfg.SDFGBuilder,
     input_edges: Iterable[gtir_dataflow.DataflowInputEdge],
-    output: MaybeNestedInTuple[gtir_dataflow.DataflowOutputEdge | None],
+    output: gtir_to_sdfg_types.FieldopResult,
     output_domain: infer_domain.DomainAccess,
 ) -> gtir_to_sdfg_types.FieldopResult:
     """
@@ -261,11 +268,11 @@ def _create_scan_field_operator(
     )
 
     return gtx_utils.tree_map(
-        lambda edge, domain, sym: (
+        lambda output_field, domain, sym: (
             _create_scan_field_operator_impl(
                 ctx,
                 sdfg_builder,
-                edge,
+                output_field,
                 domain,
                 sym.type,
                 map_exit,
@@ -347,18 +354,12 @@ def _lower_lambda_to_nested_sdfg(
         )
     )
     # the lambda expression, i.e. body of the scan, will be created inside a nested SDFG.
-    lambda_sdfg = dace.SDFG(name=sdfg_builder.unique_nsdfg_name(ctx.sdfg, "scan"))
-    lambda_sdfg.debuginfo = gtir_to_sdfg_utils.debug_info(lambda_node, default=ctx.sdfg.debuginfo)
-
-    # We allocate the lambda parameters as transients (see `use_transient_storage=True`).
-    # When they are accessed, the corresponding data descriptor (scalar or array)
-    # will be turned into global by setting `transient=False`. In this way, we remove
-    # all unused (and possibly undefined) input arguments.
-    sdfg_builder.add_sdfg_params(
-        lambda_sdfg,
-        node_params=lambda_params,
-        symbolic_params=set(),
-        use_transient_storage=True,
+    lambda_sdfg, _ = sdfg_builder.setup_nested_sdfg(
+        expr=lambda_node,
+        sdfg_name="scan",
+        parent_ctx=ctx,
+        params=lambda_params,
+        capture_scope_symbols=False,
     )
 
     # We set `using_explicit_control_flow=True` because the vertical scan is lowered to a `LoopRegion`.
@@ -531,42 +532,6 @@ def _lower_lambda_to_nested_sdfg(
     return compute_ctx, lambda_output
 
 
-def _handle_dataflow_result_of_nested_sdfg(
-    nsdfg_node: dace.nodes.NestedSDFG,
-    inner_ctx: gtir_to_sdfg.SubgraphContext,
-    outer_ctx: gtir_to_sdfg.SubgraphContext,
-    inner_data: gtir_to_sdfg_types.FieldopData,
-    field_domain: infer_domain.NonTupleDomainAccess,
-) -> gtir_dataflow.DataflowOutputEdge | None:
-    assert isinstance(inner_data.gt_type, ts.FieldType)
-    inner_dataname = inner_data.dc_node.data
-    inner_desc = inner_ctx.sdfg.data(inner_dataname)
-    assert inner_desc.transient
-
-    if isinstance(field_domain, domain_utils.SymbolicDomain):
-        # The field is used outside the nested SDFG, therefore it needs to be copied
-        # to a temporary array in the parent SDFG (outer context).
-        inner_desc.transient = False
-        outer_dataname, outer_desc = outer_ctx.sdfg.add_temp_transient_like(inner_desc)
-        outer_node = outer_ctx.state.add_access(outer_dataname)
-        outer_ctx.state.add_edge(
-            nsdfg_node,
-            inner_dataname,
-            outer_node,
-            None,
-            dace.Memlet.from_array(outer_dataname, outer_desc),
-        )
-        output_expr = gtir_dataflow.ValueExpr(outer_node, inner_data.gt_type.dtype)
-        return gtir_dataflow.DataflowOutputEdge(outer_ctx.state, output_expr)
-    else:
-        # The field is not used outside the nested SDFG. It is likely just storage
-        # for some internal state, accessed during column scan, and can be turned
-        # into a transient array inside the nested SDFG.
-        assert field_domain == infer_domain.DomainAccessDescriptor.NEVER
-        nsdfg_node.out_connectors.pop(inner_dataname)
-        return None
-
-
 def translate_scan(
     node: gtir.Node,
     ctx: gtir_to_sdfg.SubgraphContext,
@@ -644,25 +609,22 @@ def translate_scan(
     # this must be executed before visiting the lambda expression, in order to populate
     # the data descriptor with the correct field domain offsets for field arguments
     lambda_args = [sdfg_builder.visit(arg, ctx=ctx) for arg in node.args]
-    lambda_args_mapping = [
-        (im.sym(_scan_input_name(scan_carry), scan_carry_type), init_data),
-    ] + [
-        (gt_symbol, arg)
-        for gt_symbol, arg in zip(stencil_expr.params[1:], lambda_args, strict=True)
-    ]
+    lambda_args_mapping = {
+        _scan_input_name(scan_carry): init_data,
+    } | {str(p.id): arg for p, arg in zip(stencil_expr.params[1:], lambda_args, strict=True)}
 
     lambda_arg_nodes, symbolic_args = gtir_to_sdfg.flatten_tuple_args(lambda_args_mapping)
 
     # The lambda expression of a scan field operator should never capture symbols
     # from the ouside scope, therefore we call `add_nested_sdfg()` with `capture_outer_data=False`.
-    nsdfg_node, input_memlets = sdfg_builder.add_nested_sdfg(
-        node=stencil_expr,
-        inner_ctx=lambda_ctx,
+    nsdfg_node, input_memlets, output = sdfg_builder.add_nested_sdfg(
+        expr=stencil_expr,
+        sdfg=lambda_ctx.sdfg,
         outer_ctx=ctx,
         symbolic_args=symbolic_args,
         data_args=lambda_arg_nodes,
         inner_result=lambda_output,
-        capture_outer_data=False,
+        output_domain=node.annex.domain,
     )
 
     # Block the inlining of NestedSDFG containing a scan.
@@ -685,19 +647,7 @@ def translate_scan(
         )
         input_edges.append(input_edge)
 
-    # for output connections, we create temporary arrays that contain the computation
-    # results of a column slice for each point in the horizontal domain
-    output_tree = gtx_utils.tree_map(
-        lambda output_data, output_domain: _handle_dataflow_result_of_nested_sdfg(
-            nsdfg_node=nsdfg_node,
-            inner_ctx=lambda_ctx,
-            outer_ctx=ctx,
-            inner_data=output_data,
-            field_domain=output_domain,
-        )
-    )(lambda_output, node.annex.domain)
-
     # we call a helper method to create a map scope that will compute the entire field
     return _create_scan_field_operator(
-        ctx, field_domain, node.type, sdfg_builder, input_edges, output_tree, node.annex.domain
+        ctx, field_domain, node.type, sdfg_builder, input_edges, output, node.annex.domain
     )

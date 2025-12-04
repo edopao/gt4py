@@ -266,7 +266,7 @@ class DataflowOutputEdge:
 
     def connect(
         self,
-        map_exit: Optional[dace.nodes.MapExit],
+        map_exit: dace.nodes.MapExit,
         dest: dace.nodes.AccessNode,
         dest_subset: dace_subsets.Range,
     ) -> bool:
@@ -283,7 +283,6 @@ class DataflowOutputEdge:
         # Check the kind of node which writes the result
         if isinstance(write_edge.src, dace.nodes.Tasklet):
             # The temporary data written by a tasklet can be safely deleted.
-            assert map_exit is not None
             remove_last_node = True
         elif isinstance(write_edge.src, dace.nodes.NestedSDFG):
             if isinstance(dest_desc, dace.data.Scalar):
@@ -311,22 +310,13 @@ class DataflowOutputEdge:
             src_node_connector = None
             src_subset = write_edge.data.dst_subset
 
-        if map_exit is None:
-            self.state.add_edge(
-                src_node,
-                src_node_connector,
-                dest,
-                None,
-                dace.Memlet(data=dest.data, subset=dest_subset, other_subset=src_subset),
-            )
-        else:
-            self.state.add_memlet_path(
-                src_node,
-                map_exit,
-                dest,
-                src_conn=src_node_connector,
-                memlet=dace.Memlet(data=dest.data, subset=dest_subset, other_subset=src_subset),
-            )
+        self.state.add_memlet_path(
+            src_node,
+            map_exit,
+            dest,
+            src_conn=src_node_connector,
+            memlet=dace.Memlet(data=dest.data, subset=dest_subset, other_subset=src_subset),
+        )
 
         return remove_last_node
 
@@ -804,6 +794,13 @@ class LambdaToDataflow(eve.NodeVisitor):
             if_sdfg, if_branch_state, self.subgraph_builder, lambda_node, lambda_args
         )
 
+        for data_node in if_branch_state.data_nodes():
+            # In case of tuple arguments, isolated access nodes might be left in the state,
+            # because not all tuple fields are necessarily used inside the lambda scope
+            if if_branch_state.degree(data_node) == 0:
+                assert not data_node.desc(if_sdfg).transient
+                if_branch_state.remove_node(data_node)
+
         return input_edges, output_tree
 
     def _visit_if_branch_result(
@@ -884,7 +881,7 @@ class LambdaToDataflow(eve.NodeVisitor):
 
         else_body = dace.sdfg.state.ControlFlowRegion("else_body", sdfg=nsdfg)
         fstate = else_body.add_state("false_branch", is_start_block=True)
-        if_region.add_branch(dace.sdfg.state.CodeBlock("not (__cond)"), else_body)
+        if_region.add_branch(None, else_body)  # `None` corresponds to else-branch
 
         input_memlets: dict[str, MemletExpr | ValueExpr] = {}
         nsdfg_symbols_mapping: Optional[dict[str, dace.symbol]] = None
