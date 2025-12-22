@@ -269,7 +269,7 @@ def translate_as_fieldop(
             # on the given domain. It copies a subset of the source field.
             arg = sdfg_builder.visit(node.args[0], ctx=ctx)
             assert isinstance(arg, gtir_to_sdfg_types.FieldopData)
-            return ctx.copy_data(arg, domain=field_domain)
+            return ctx.copy_data(sdfg_builder, arg, domain=field_domain)
     elif isinstance(fieldop_expr, gtir.Lambda):
         # Default case, handled below: the argument expression is a lambda function
         # representing the stencil operation to be computed over the field domain.
@@ -560,8 +560,8 @@ def translate_tuple_get(
     index = int(node.args[0].value)
 
     data_nodes = sdfg_builder.visit(node.args[1], ctx=ctx)
-    if isinstance(data_nodes, gtir_to_sdfg_types.FieldopData):
-        raise ValueError(f"Invalid tuple expression {node}")
+    if not isinstance(data_nodes, tuple):
+        raise ValueError(f"Invalid tuple expression {node}.")
     return data_nodes[index]
 
 
@@ -578,11 +578,12 @@ def translate_scalar_expr(
     scalar_expr_args = []
 
     for i, arg_expr in enumerate(node.args):
-        visit_expr = True
-        if isinstance(arg_expr, gtir.SymRef) and str(arg_expr.id) not in ctx.data_nodes:
+        if isinstance(arg_expr, gtir.SymRef):
             # all `SymRef` should refer to symbols defined in the program, except in case of non-variable argument,
             # e.g. the type name `float64` used in casting expressions like `cast_(variable, float64)`
-            visit_expr = False
+            visit_expr = str(arg_expr.id) in ctx.scope_symbols
+        else:
+            visit_expr = True
 
         if visit_expr:
             # we visit the argument expression and obtain the access node to
