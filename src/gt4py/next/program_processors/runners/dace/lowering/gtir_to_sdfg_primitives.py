@@ -284,7 +284,7 @@ def translate_as_fieldop(
 
     # represent the field operator as a mapped tasklet graph, which will range over the field domain
     input_edges, output_edge = gtir_dataflow.translate_lambda_to_dataflow(
-        ctx.sdfg, ctx.state, sdfg_builder, stencil_expr, fieldop_args
+        ctx.sdfg, ctx.state, sdfg_builder, stencil_expr, fieldop_args, remove_isolated_nodes=True
     )
     assert isinstance(output_edge, gtir_dataflow.DataflowOutputEdge)
 
@@ -294,6 +294,7 @@ def translate_as_fieldop(
 
 
 def _construct_if_branch_output(
+    sdfg_builder: gtir_to_sdfg.SDFGBuilder,
     tbranch_ctx: gtir_to_sdfg.SubgraphContext,
     fbranch_ctx: gtir_to_sdfg.SubgraphContext,
     tbranch_data: gtir_to_sdfg_types.FieldopData | None,
@@ -308,11 +309,11 @@ def _construct_if_branch_output(
     assert fbranch_data is not None
     assert isinstance(domain, domain_utils.SymbolicDomain)
     field_domain = gtir_domain.get_field_domain(domain)
-    tbranch_output = tbranch_ctx.copy_data(tbranch_data, field_domain)
+    tbranch_output = tbranch_ctx.copy_data(sdfg_builder, tbranch_data, field_domain)
     tbranch_output_edge = tbranch_ctx.state.in_edges(tbranch_output.dc_node)[0]
     assert tbranch_output_edge.src == tbranch_data.dc_node
     assert tbranch_output_edge.data.data == tbranch_output.dc_node.data
-    fbranch_output = fbranch_ctx.copy_data(fbranch_data, field_domain)
+    fbranch_output = fbranch_ctx.copy_data(sdfg_builder, fbranch_data, field_domain)
     fbranch_output_edge = fbranch_ctx.state.in_edges(fbranch_output.dc_node)[0]
     assert fbranch_output_edge.src == fbranch_data.dc_node
     assert fbranch_output_edge.data.data == fbranch_output.dc_node.data
@@ -341,11 +342,12 @@ def translate_if(
     # expect condition as first argument
     if_cond_stmt = gtir_python_codegen.get_source(cond_expr)
 
-    nsdfg, input_params = sdfg_builder.setup_nested_sdfg(
-        expr=node,
+    nsdfg, input_params = sdfg_builder.setup_nested_context(
+        expr=im.lambda_()(node),
         sdfg_name="if_stmt",
         parent_ctx=ctx,
         params=[],
+        symbolic_inputs=set(),
         capture_scope_symbols=True,
     )
 
@@ -372,7 +374,7 @@ def translate_if(
 
             node_output = gtx_utils.tree_map(
                 lambda tbranch_data, fbranch_data, domain: _construct_if_branch_output(
-                    tbranch_ctx, fbranch_ctx, tbranch_data, fbranch_data, domain
+                    sdfg_builder, tbranch_ctx, fbranch_ctx, tbranch_data, fbranch_data, domain
                 )
             )(true_br_result, false_br_result, node.annex.domain)
 
@@ -581,7 +583,7 @@ def translate_scalar_expr(
         if isinstance(arg_expr, gtir.SymRef):
             # all `SymRef` should refer to symbols defined in the program, except in case of non-variable argument,
             # e.g. the type name `float64` used in casting expressions like `cast_(variable, float64)`
-            visit_expr = str(arg_expr.id) in ctx.scope_symbols
+            visit_expr = str(arg_expr.id) in ctx.data_nodes
         else:
             visit_expr = True
 

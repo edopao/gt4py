@@ -39,12 +39,12 @@ from gt4py import eve
 from gt4py.eve import concepts
 from gt4py.next import common as gtx_common, config as gtx_config, utils as gtx_utils
 from gt4py.next.iterator import ir as gtir
-from gt4py.next.iterator.ir_utils import (
-    common_pattern_matcher as cpm,
-    domain_utils,
-    ir_makers as im,
+from gt4py.next.iterator.ir_utils import common_pattern_matcher as cpm, domain_utils
+from gt4py.next.iterator.transforms import (
+    infer_domain,
+    prune_casts as ir_prune_casts,
+    symbol_ref_utils,
 )
-from gt4py.next.iterator.transforms import prune_casts as ir_prune_casts, symbol_ref_utils
 from gt4py.next.iterator.type_system import inference as gtir_type_inference
 from gt4py.next.program_processors.runners.dace import sdfg_args as gtx_dace_args
 from gt4py.next.program_processors.runners.dace.lowering import (
@@ -234,28 +234,27 @@ class SubgraphContext:
     data_nodes: dict[str, gtir_to_sdfg_types.FieldopResult]
 
     def remove_isolated_nodes(self) -> None:
-        flat_data_nodes = [
-            data_node.dc_node
-            for data_node in gtx_utils.flatten_nested_tuple(tuple(self.data_nodes.values()))
-            if data_node is not None
+        flat_access_nodes = [
+            x.dc_node
+            for x in gtx_utils.flatten_nested_tuple(tuple(self.data_nodes.values()))
+            if x is not None
         ]
         isolated_nodes = [
-            access_node for access_node in flat_data_nodes if self.state.degree(access_node) == 0
+            access_node for access_node in flat_access_nodes if self.state.degree(access_node) == 0
         ]
         self.state.remove_nodes_from(isolated_nodes)
 
     def input_data(self) -> set[str]:
-        flat_symbols = []
-        for sym_name, sym_type in self.scope_symbols.items():
-            if isinstance(sym_type, ts.TupleType):
-                flat_symbols.extend(gtir_to_sdfg_utils.flatten_tuple_fields(sym_name, sym_type))
-            else:
-                flat_symbols.append(im.sym(sym_name, sym_type))
-
-        used_data = {access_node.data for access_node in self.state.data_nodes()}
-        input_data = {data_name for sym in flat_symbols if (data_name := str(sym.id)) in used_data}
-        assert not any(self.sdfg.arrays[data_name].transient for data_name in input_data)
-        return input_data
+        flat_access_nodes = [
+            x.dc_node
+            for x in gtx_utils.flatten_nested_tuple(tuple(self.data_nodes.values()))
+            if x is not None
+        ]
+        return {
+            access_node.data
+            for access_node in flat_access_nodes
+            if not access_node.desc(self.sdfg).transient
+        }
 
     def copy_ctx_to_state(self, state: dace.SDFGState) -> SubgraphContext:
         return SubgraphContext(
@@ -384,17 +383,18 @@ class SDFGBuilder(DataflowBuilder, Protocol):
         ...
 
     @abc.abstractmethod
-    def setup_nested_sdfg(
+    def setup_nested_context(
         self,
-        expr: gtir.Expr,
+        expr: gtir.Lambda,
         sdfg_name: str,
         parent_ctx: SubgraphContext,
         params: Iterable[gtir.Sym],
+        symbolic_inputs: set[str],
         capture_scope_symbols: bool,
-    ) -> SubgraphContext:
+    ) -> tuple[dace.SDFG, list[gtir.Sym]]:
         """
-        Create an nested SDFG in which to lower a lambda expression, indipendent
-        from the `parent_context` where the parent expression is being translated.
+        Create an nested SDFG context to lower a lambda expression, indipendent
+        from the current context where the parent expression is being translated.
 
         This method will setup the global symbols, that correspond to the parameters
         of the expression to be lowered, as well as the set of symbolic arguments,
@@ -402,7 +402,7 @@ class SDFGBuilder(DataflowBuilder, Protocol):
         as dace symbols in the parent SDFG.
 
         Args:
-            expr: The GTIR expression to be lowered as a nested SDFG.
+            expr: The lambda expression to be lowered as a nested SDFG.
             sdfg_name: The name of the nested SDFG where to lower the given expression.
             parent_ctx: The parent SDFG context.
             params: List of GTIR symbols passed as parameters to the lambda expression.
@@ -412,7 +412,7 @@ class SDFGBuilder(DataflowBuilder, Protocol):
                 GTIR symbols defined in the parent scope.
 
         Returns:
-            The new SDFG context in which to lower a nested expression.
+            A new empty SDFG with a set of defined data entities.
         """
         ...
 
@@ -616,14 +616,19 @@ class GTIRToSDFG(eve.NodeVisitor, SDFGBuilder):
         assert self.column_axis
         return dim == self.column_axis
 
-    def setup_nested_sdfg(
+    def setup_nested_context(
         self,
-        expr: gtir.Expr,
+        expr: gtir.Lambda,
         sdfg_name: str,
         parent_ctx: SubgraphContext,
         params: Iterable[gtir.Sym],
+        symbolic_inputs: set[str],
         capture_scope_symbols: bool,
     ) -> tuple[dace.SDFG, list[gtir.Sym]]:
+        assert symbolic_inputs.issubset(str(p.id) for p in params) and all(
+            isinstance(p.type, ts.ScalarType) for p in params if str(p.id) in symbolic_inputs
+        )
+
         # If `capture_scope_symbols` is True, besides the values mapped to the parameters
         # of the lambda expression (`lambda_params`), we also pass to the nested SDFG
         # all GTIR-symbols in scope, which means the symbols defined in current context.
@@ -676,8 +681,8 @@ class GTIRToSDFG(eve.NodeVisitor, SDFGBuilder):
             gtir.Sym(id=name, type=lambda_symbols[name]) for name in sorted(lambda_symbols.keys())
         ]
 
-        sdfg = dace.SDFG(name=self.unique_nsdfg_name(parent_ctx.sdfg, sdfg_name))
-        sdfg.debuginfo = gtir_to_sdfg_utils.debug_info(expr, default=parent_ctx.sdfg.debuginfo)
+        nsdfg = dace.SDFG(name=self.unique_nsdfg_name(parent_ctx.sdfg, sdfg_name))
+        nsdfg.debuginfo = gtir_to_sdfg_utils.debug_info(expr, default=parent_ctx.sdfg.debuginfo)
 
         # All GTIR-symbols accessed in domain expressions by the lambda need to be
         # represented as dace symbols.
@@ -694,14 +699,12 @@ class GTIRToSDFG(eve.NodeVisitor, SDFGBuilder):
         )
         domain_symbols = {str(p.id) for p in _flatten_tuple_symbols(domain_symrefs)}
 
-        self._add_sdfg_params(
-            sdfg,
+        self.add_sdfg_params(
+            nsdfg,
             node_params=input_params,
             symbolic_params=(domain_symbols | mapped_symbols),
         )
-
-        nsdfg_entry_state = nsdfg.add_state(f"{sdfg_name}_entry", is_start_block=True)
-        return SubgraphContext(nsdfg, nsdfg_entry_state, lambda_symbols)
+        return nsdfg, input_params
 
     def add_nested_sdfg(
         self,
@@ -1237,6 +1240,7 @@ class GTIRToSDFG(eve.NodeVisitor, SDFGBuilder):
 
         # Visit the field operator expression.
         source_tree = self._visit_expression(stmt.expr, ctx)
+        ctx_input_data = ctx.input_data()
 
         # In order to support inout argument, write the result in separate next state
         # this is needed to avoid undefined behavior for expressions like: X, Y = X + 1, X
@@ -1291,132 +1295,6 @@ class GTIRToSDFG(eve.NodeVisitor, SDFGBuilder):
             return gtir_to_sdfg_primitives.translate_scalar_expr(node, ctx, self)
         else:
             raise NotImplementedError(f"Unexpected 'FunCall' expression ({node}).")
-
-    def visit_Lambda(
-        self,
-        node: gtir.Lambda,
-        ctx: SubgraphContext,
-        args: Mapping[gtir.Sym, gtir_to_sdfg_types.FieldopResult | gtir_to_sdfg_types.SymbolicData],
-    ) -> gtir_to_sdfg_types.FieldopResult:
-        """
-        Translates a `Lambda` node to a nested SDFG in the current state.
-
-        The reason for creating a nested SDFG is to define local symbols (the lambda
-        paremeters) that map to parent fields, either program arguments, temporaries
-        or symbolic expressions.
-
-        The arguments passed to the lambda expression are divided in two groups:
-        * arguments passed as access nodes, i.e. `as_fieldop` result, field and scalar
-          `gtir.SymRef`, or nested let-lambdas;
-        * arguments (scalars only) that can be evaluated as symbolic expressions,
-          which can be mapped to symbols on the nested SDFG.
-
-
-        If the lambda has a parameter whose name is already present in `GTIRToSDFG.global_symbols`,
-        i.e. a lambda parameter with the same name as a symbol in scope, the parameter will shadow
-        the previous symbol during traversal of the lambda expression.
-        """
-
-        lambda_arg_nodes, symbolic_args = flatten_tuple_args(args.items())
-
-        # lower let-statement lambda node as a nested SDFG
-        lambda_ctx = self.setup_nested_context(
-            expr=node,
-            sdfg_name="lambda",
-            parent_ctx=ctx,
-            params=args.keys(),
-            symbolic_inputs=set(symbolic_args.keys()),
-            capture_scope_symbols=True,
-        )
-
-        lambda_result = self.visit(node.expr, ctx=lambda_ctx)
-
-        # A let-lambda is allowed to capture GTIR-symbols from the outer scope,
-        # therefore we call `add_nested_sdfg()` with `capture_outer_data=True`.
-        nsdfg_node, input_memlets = self.add_nested_sdfg(
-            node=node,
-            inner_ctx=lambda_ctx,
-            outer_ctx=ctx,
-            symbolic_args=symbolic_args,
-            data_args=lambda_arg_nodes,
-            inner_result=lambda_result,
-            capture_outer_data=True,
-        )
-
-        # In this loop we call `pop()`, whenever an argument is connected to an input
-        # connector on the nested SDFG, so the corresponding node is removed from the dictionary.
-        for input_connector, memlet in input_memlets.items():
-            if input_connector in lambda_arg_nodes:
-                arg_node = lambda_arg_nodes.pop(input_connector)
-                assert arg_node is not None
-                src_node = arg_node.dc_node
-            else:
-                src_node = ctx.state.add_access(memlet.data)
-
-            ctx.state.add_edge(src_node, None, nsdfg_node, input_connector, memlet)
-
-        # We can now safely remove all remaining arguments, because unused.
-        # It can happen that a let-lambda argument is not used, in which case it
-        # should be `None` at this stage, but the symbol passed as argument is captured
-        # by the let-lambda expression and thus can be accessed directly inside the
-        # inner scope. The domain in the annex of this symbol is not `NEVER`, and
-        # an access node is created, so we find an isolated access node here.
-        if unused_access_nodes := [
-            arg_node.dc_node
-            for arg_node in lambda_arg_nodes.values()
-            if not (arg_node is None or arg_node.dc_node.desc(ctx.sdfg).transient)
-        ]:
-            assert all(ctx.state.degree(access_node) == 0 for access_node in unused_access_nodes)
-            ctx.state.remove_nodes_from(unused_access_nodes)
-
-        def construct_output_for_nested_sdfg(
-            inner_data: gtir_to_sdfg_types.FieldopData,
-        ) -> gtir_to_sdfg_types.FieldopData:
-            """
-            This function makes a data container that lives inside a nested SDFG, denoted by `inner_data`,
-            available in the parent SDFG.
-            In order to achieve this, the data container inside the nested SDFG is marked as non-transient
-            (in other words, externally allocated - a requirement of the SDFG IR) and a new data container
-            is created within the parent SDFG, with the same properties (shape, stride, etc.) of `inner_data`
-            but appropriatly remapped using the symbol mapping table.
-            For lambda arguments that are simply returned by the lambda, the `inner_data` was already mapped
-            to a parent SDFG data container, therefore it can be directly accessed in the parent SDFG.
-            The same happens to symbols available in the lambda context but not explicitly passed as lambda
-            arguments, that are simply returned by the lambda: it can be directly accessed in the parent SDFG.
-            """
-            if not inner_data.dc_node.desc(lambda_ctx.sdfg).transient:
-                # This is inout data: some global associated to an input connector
-                # is also a sink node of the lambda dataflow. This can happen, for
-                # example, when the lambda constructs a tuple of some input fields.
-                # We copy this data to a new node, which we use as output.
-                nsdfg_node.remove_out_connector(inner_data.dc_node.data)
-                inner_data = lambda_ctx.copy_data(self, inner_data, domain=None)
-                nsdfg_node.add_out_connector(inner_data.dc_node.data)
-            elif lambda_ctx.state.degree(inner_data.dc_node) == 0:
-                # Isolated access node will make validation fail.
-                # Isolated access nodes can be found in the join-state of an if-expression.
-                lambda_ctx.state.remove_node(inner_data.dc_node)
-            # Transient data nodes only exist within the nested SDFG. In order to return some result data,
-            # the corresponding data container inside the nested SDFG has to be changed to non-transient,
-            # that is externally allocated, as required by the SDFG IR. An output edge will write the result
-            # from the nested-SDFG to a new intermediate data container allocated in the parent SDFG.
-            outer_data = ctx.map_nsdfg_field(
-                sdfg_builder=self,
-                nsdfg_field=inner_data,
-                nsdfg=lambda_ctx.sdfg,
-                symbol_mapping=nsdfg_node.symbol_mapping,
-            )
-            ctx.state.add_edge(
-                nsdfg_node,
-                inner_data.dc_node.data,
-                outer_data.dc_node,
-                None,
-                ctx.sdfg.make_array_memlet(outer_data.dc_node.data),
-            )
-
-            return outer_data
-
-        return gtx_utils.tree_map(construct_output_for_nested_sdfg)(lambda_result)
 
     def visit_Literal(
         self,

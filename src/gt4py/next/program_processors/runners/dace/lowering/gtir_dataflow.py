@@ -791,7 +791,12 @@ class LambdaToDataflow(eve.NodeVisitor):
         # visit each branch of the if-statement as if it was a Lambda node
         lambda_node = gtir.Lambda(params=lambda_params, expr=expr)
         input_edges, output_tree = translate_lambda_to_dataflow(
-            if_sdfg, if_branch_state, self.subgraph_builder, lambda_node, lambda_args
+            if_sdfg,
+            if_branch_state,
+            self.subgraph_builder,
+            lambda_node,
+            lambda_args,
+            remove_isolated_nodes=True,
         )
 
         return input_edges, output_tree
@@ -1899,6 +1904,7 @@ def translate_lambda_to_dataflow(
     sdfg_builder: gtir_to_sdfg.DataflowBuilder,
     node: gtir.Lambda,
     args: Sequence[MaybeNestedInTuple[IteratorExpr | MemletExpr | ValueExpr]],
+    remove_isolated_nodes: bool,
 ) -> tuple[list[DataflowInputEdge], MaybeNestedInTuple[DataflowOutputEdge]]:
     """
     Entry point to visit a `Lambda` node and lower it to a dataflow graph,
@@ -1927,10 +1933,11 @@ def translate_lambda_to_dataflow(
     lambda_output = taskgen.visit(node)
 
     # remove access nodes to lambda symbols which were not used
-    flat_arg_nodes = (
-        x.field if isinstance(x, IteratorExpr) else x.dc_node  # type: ignore[attr-defined]
-        for x in gtx_utils.flatten_nested_tuple(tuple(args))
-    )
-    state.remove_nodes_from([node for node in flat_arg_nodes if state.degree(node) == 0])
+    if remove_isolated_nodes:
+        flat_arg_nodes = (
+            x.field if isinstance(x, IteratorExpr) else x.dc_node  # type: ignore[attr-defined]
+            for x in gtx_utils.flatten_nested_tuple(tuple(args))
+        )
+        state.remove_nodes_from([node for node in flat_arg_nodes if state.degree(node) == 0])
 
     return taskgen.input_edges, lambda_output

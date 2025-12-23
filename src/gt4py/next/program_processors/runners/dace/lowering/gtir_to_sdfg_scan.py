@@ -354,11 +354,12 @@ def _lower_lambda_to_nested_sdfg(
         )
     )
     # the lambda expression, i.e. body of the scan, will be created inside a nested SDFG.
-    lambda_sdfg, _ = sdfg_builder.setup_nested_sdfg(
-        expr=lambda_node,
-        sdfg_name="scan",
-        parent_ctx=ctx,
-        params=lambda_params,
+    lambda_sdfg, _ = sdfg_builder.setup_nested_context(
+        lambda_node,
+        "scan",
+        ctx,
+        lambda_params,
+        symbolic_inputs=set(),
         capture_scope_symbols=False,
     )
 
@@ -435,7 +436,12 @@ def _lower_lambda_to_nested_sdfg(
         # stil inside the 'compute' state, generate the dataflow representing the stencil
         # to be applied on the horizontal domain
         lambda_input_edges, lambda_result = gtir_dataflow.translate_lambda_to_dataflow(
-            compute_ctx.sdfg, compute_ctx.state, sdfg_builder, lambda_node, stencil_args
+            compute_ctx.sdfg,
+            compute_ctx.state,
+            sdfg_builder,
+            lambda_node,
+            stencil_args,
+            remove_isolated_nodes=False,
         )
     # connect the dataflow input directly to the source data nodes, without passing through a map node;
     # the reason is that the map for horizontal domain is outside the scan loop region
