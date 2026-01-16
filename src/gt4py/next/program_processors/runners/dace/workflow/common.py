@@ -60,7 +60,7 @@ def set_dace_config(
     #   for each program. Within this folder, by setting 'cache=single', dace will
     #   cache the generated code and binary objects for the program SDFG, without
     #   creating any further sub-folder to compile the SDFG.
-    dace.Config.set("cache", value="single")
+    dace.Config.set("cache", value="unique")
 
     # Prevents the implicit change of Memlets to Maps. Instead they should be handled by
     #  `gt4py.next.program_processors.runners.dace.transfromations.gpu_utils.gt_gpu_transform_non_standard_memlet()`.
