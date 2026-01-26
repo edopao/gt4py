@@ -510,6 +510,15 @@ def _lower_lambda_to_nested_sdfg(
                 None,
                 dace.Memlet(data=output, subset=output_subset, other_subset=src_subset),
             )
+        for out_edge in compute_state.out_edges(scan_result.dc_node):
+            dst_subset = out_edge.data.get_dst_subset(out_edge, compute_state)
+            compute_state.add_edge(
+                output_node,
+                None,
+                out_edge.dst,
+                out_edge.dst_conn,
+                dace.Memlet(data=output, subset=output_subset, other_subset=dst_subset),
+            )
         compute_state.remove_node(scan_result.dc_node)
         lambda_ctx.sdfg.remove_data(scan_result_data)
 
