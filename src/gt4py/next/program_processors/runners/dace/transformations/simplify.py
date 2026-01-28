@@ -369,12 +369,6 @@ def gt_inline_nested_sdfg(
         if multi_state_inliner.can_be_applied(parent_state, 0, parent_sdfg, permissive=permissive):
             multi_state_inliner.apply(parent_state, parent_sdfg)
             nb_inlines_total += 1
-            if nsdfg_node.label.startswith("scan_"):
-                # See `gtir_to_sdfg_scan.py::translate_scan()` for more information.
-                warnings.warn(
-                    f"Inlined '{nsdfg_node.label}' which might be a scan, this might leads to errors during simplification.",
-                    stacklevel=0,
-                )
 
     result: dict[str, int] = {}
     if nb_inlines_total != 0:
