@@ -75,14 +75,14 @@ class DataflowBuilder(Protocol):
 
     def add_temp_array(
         self, sdfg: dace.SDFG, shape: Sequence[Any], dtype: dace.dtypes.typeclass
-    ) -> tuple[str, dace.data.Scalar]:
+    ) -> tuple[str, dace.data.Array]:
         """Add a temporary array to the SDFG."""
         temp_name = self.unique_temp_name()
         return sdfg.add_transient(temp_name, shape, dtype)
 
     def add_temp_array_like(
         self, sdfg: dace.SDFG, datadesc: dace.data.Array
-    ) -> tuple[str, dace.data.Scalar]:
+    ) -> tuple[str, dace.data.Array]:
         """Add a temporary array to the SDFG."""
         temp_name = self.unique_temp_name()
         return sdfg.add_temp_transient_like(datadesc, name=temp_name)
@@ -670,9 +670,7 @@ class GTIRToSDFG(eve.NodeVisitor, SDFGBuilder):
         # The output connectors only need to be setup for the actual result of the
         # internal dataflow that writes to some sink data nodes of the nested SDFG.
         lambda_outputs = {
-            dataname
-            for output in lambda_output_data
-            if output is not None and (dataname := output.dc_node.data) not in data_args
+            output.dc_node.data for output in lambda_output_data if output is not None
         }
 
         # Map free symbols to parent SDFG

@@ -97,6 +97,11 @@ class MemletExpr:
     def gt_dtype(self) -> ts.ScalarType | ts.ListType:
         return self.gt_field.dtype
 
+    def shift(self, dim: gtx_common.Dimension, offset: dace.symbolic.SymbolicType) -> MemletExpr:
+        offset_mask = [offset if field_dim == dim else 0 for field_dim in self.gt_field.dims]
+        new_subset = self.subset.offset_new(offset_mask, negative=False)
+        return MemletExpr(self.dc_node, self.gt_field, new_subset)
+
     def __post_init__(self) -> None:
         if isinstance(self.gt_dtype, ts.ListType):
             assert self.gt_dtype.offset_type is not None
