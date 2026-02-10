@@ -25,6 +25,53 @@ from gt4py.next.program_processors.runners.dace.transformations import (
 
 
 @dace_properties.make_properties
+class SingleStateGlobalSelfCopyBranchRemoval(dace_transformation.SingleStateTransformation):
+    """Remove global self copy inside nested conditional regions.
+
+    TODO
+    """
+
+    # Name of all data that is used at only one place. Is computed by the
+    #  `FindSingleUseData` pass and must be passed at construction time. Needed
+    #  until [issue#1911](https://github.com/spcl/dace/issues/1911) has been solved.
+    _single_use_data: Optional[dict[dace.SDFG, set[str]]]
+
+    node_g1 = dace_transformation.PatternNode(dace_nodes.AccessNode)
+    node_g2 = dace_transformation.PatternNode(dace_nodes.AccessNode)
+
+    @classmethod
+    def expressions(cls) -> Any:
+        return [dace.sdfg.utils.node_path_graph(cls.node_g1, cls.node_g2)]
+
+    def __init__(
+        self,
+        *args: Any,
+        single_use_data: Optional[dict[dace.SDFG, set[str]]] = None,
+        **kwargs: Any,
+    ) -> None:
+        super().__init__(*args, **kwargs)
+        self._single_use_data = None
+        if single_use_data is not None:
+            self._single_use_data = single_use_data
+
+    def can_be_applied(
+        self,
+        graph: dace.SDFGState | dace.SDFG,
+        expr_index: int,
+        sdfg: dace.SDFG,
+        permissive: bool = False,
+    ) -> bool:
+        return False
+
+    def apply(
+        self,
+        graph: dace.SDFGState,
+        sdfg: dace.SDFG,
+    ) -> None:
+        return
+
+
+@dace_properties.make_properties
 class SingleStateGlobalSelfCopyElimination(dace_transformation.SingleStateTransformation):
     """Remove global self copy.
 
