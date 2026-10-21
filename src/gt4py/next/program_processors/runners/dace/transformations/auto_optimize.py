@@ -675,6 +675,7 @@ def _gt_auto_process_top_level_maps(
                 fuse_map_fragments=False,  # To avoid uncontrolled Map fusing.
                 skip=gtx_transformations.constants._GT_AUTO_OPT_TOP_LEVEL_STAGE_SIMPLIFY_SKIP_LIST,
                 consolidate_edges_only_if_not_extending=True,
+                only_if_common_ancestor=False,
                 check_split_callback=optimization_hooks.get(  # type: ignore[arg-type]
                     GT4PyAutoOptHook.TopLevelDataFlowHorizontalSplitCallBack, None
                 ),
